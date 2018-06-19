@@ -1,0 +1,6 @@
+[package]
+name = "elf32to64"
+version = "0.1.0"
+authors = ["Stephen Checkoway <s@pahtak.org>"]
+
+[dependencies]
