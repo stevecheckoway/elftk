@@ -6,7 +6,7 @@ mod elf_reader;
 
 
 use std::io;
-use std::fs::File;
+use std::fs;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -14,8 +14,10 @@ fn main() -> io::Result<()> {
         eprintln!("Usage: {} input output", &args[0]);
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "needs arg"));
     }
-    let mut input = File::open(&args[1])?;
-    //let reader = elf::Reader::new(&mut input)?;
+    let data = fs::read(&args[1])?;
+    let reader = elf::Reader::new(&data)?;
+    let hdr = reader.header();
+    println!("{:?}", hdr);
 
     //let hdr = reader.header();
     //let mut new_hdr = elf::Elf64_Ehdr::new();

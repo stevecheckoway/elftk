@@ -126,7 +126,7 @@ pub struct Elf64_Phdr {
     pub p_offset: Elf64_Off,
     pub p_vaddr:  Elf64_Addr,
     pub p_paddr:  Elf64_Addr,
-    pub p_filesz: Elf64_Word,
-    pub p_memsz:  Elf64_Word,
-    pub p_align:  Elf64_Word,
+    pub p_filesz: Elf64_Xword,
+    pub p_memsz:  Elf64_Xword,
+    pub p_align:  Elf64_Xword,
 }
