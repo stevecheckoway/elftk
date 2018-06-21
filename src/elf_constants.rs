@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
-use elf_base_types::{Elf_Half, Elf_Word};
+use elf_base_types::{Elf_Half, Elf_Word, Elf_Xword};
 
 // Elf header constants.
 // e_ident
@@ -297,30 +297,30 @@ pub const SHT_LOUSER:        Elf_Word = 0x80000000;
 pub const SHT_HIUSER:        Elf_Word = 0xffffffff;
 
 // sh_flags
-pub const SHF_WRITE:            Elf_Word = 0x1;
-pub const SHF_ALLOC:            Elf_Word = 0x2;
-pub const SHF_EXECINSTR:        Elf_Word = 0x4;
-pub const SHF_MERGE:            Elf_Word = 0x10;
-pub const SHF_STRINGS:          Elf_Word = 0x20;
-pub const SHF_INFO_LINK:        Elf_Word = 0x40;
-pub const SHF_LINK_ORDER:       Elf_Word = 0x80;
-pub const SHF_OS_NONCONFORMING: Elf_Word = 0x100;
-pub const SHF_GROUP:            Elf_Word = 0x200;
-pub const SHF_TLS:              Elf_Word = 0x400;
-pub const SHF_COMPRESSED:       Elf_Word = 0x800;
-pub const SHF_MASKOS:           Elf_Word = 0x0ff00000;
-pub const SHF_MASKPROC:         Elf_Word = 0xf0000000;
+pub const SHF_WRITE:            Elf_Xword = 0x1;
+pub const SHF_ALLOC:            Elf_Xword = 0x2;
+pub const SHF_EXECINSTR:        Elf_Xword = 0x4;
+pub const SHF_MERGE:            Elf_Xword = 0x10;
+pub const SHF_STRINGS:          Elf_Xword = 0x20;
+pub const SHF_INFO_LINK:        Elf_Xword = 0x40;
+pub const SHF_LINK_ORDER:       Elf_Xword = 0x80;
+pub const SHF_OS_NONCONFORMING: Elf_Xword = 0x100;
+pub const SHF_GROUP:            Elf_Xword = 0x200;
+pub const SHF_TLS:              Elf_Xword = 0x400;
+pub const SHF_COMPRESSED:       Elf_Xword = 0x800;
+pub const SHF_MASKOS:           Elf_Xword = 0x0ff00000;
+pub const SHF_MASKPROC:         Elf_Xword = 0xf0000000;
 
 // ch_type
-pub const ELFCOMPRESS_ZLIB:  Elf_Word  = 1;
-pub const ELFCOMPRESS_LOOS:  Elf_Word  = 0x60000000;
-pub const ELFCOMPRESS_HIOS:  Elf_Word  = 0x6fffffff;
+pub const ELFCOMPRESS_ZLIB:   Elf_Word = 1;
+pub const ELFCOMPRESS_LOOS:   Elf_Word = 0x60000000;
+pub const ELFCOMPRESS_HIOS:   Elf_Word = 0x6fffffff;
 pub const ELFCOMPRESS_LOPROC: Elf_Word = 0x70000000;
 pub const ELFCOMPRESS_HIPROC: Elf_Word = 0x7fffffff;
 
 // Section group flags
-pub const GRP_COMDAT:  Elf_Word  = 0x1;
-pub const GRP_MASKOS:  Elf_Word  = 0x0ff00000;
+pub const GRP_COMDAT:   Elf_Word = 0x1;
+pub const GRP_MASKOS:   Elf_Word = 0x0ff00000;
 pub const GRP_MASKPROC: Elf_Word = 0xf0000000;
 
 

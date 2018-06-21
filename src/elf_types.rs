@@ -76,6 +76,45 @@ pub struct Elf64_Shdr {
 
 #[derive(Debug)]
 #[repr(C)]
+pub struct Elf32_Chdr {
+    pub ch_type:      Elf32_Word,
+    pub ch_size:      Elf32_Word,
+    pub ch_addralign: Elf32_Word,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Elf64_Chdr {
+    pub ch_type:      Elf64_Word,
+    pub ch_reserved:  Elf64_Word,
+    pub ch_size:      Elf64_Xword,
+    pub ch_addralign: Elf64_Xword,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Elf32_Sym {
+    st_name:   Elf32_Word,
+    st_value:  Elf32_Addr,
+    st_size:   Elf32_Word,
+    st_info:   u8,
+    st_other:  u8,
+    st_shndx:  Elf32_Half,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Elf64_Sym {
+    st_name:   Elf64_Word,
+    st_info:   u8,
+    st_other:  u8,
+    st_shndx:  Elf64_Half,
+    st_value:  Elf64_Addr,
+    st_size:   Elf64_Xword,
+}
+
+#[derive(Debug)]
+#[repr(C)]
 pub struct Elf32_Rel {
     r_offset:   Elf32_Addr,
     r_info:     Elf32_Word,
