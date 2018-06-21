@@ -18,38 +18,63 @@ pub enum ElfT<T32, T64, E> {
     Elf64BE(T64, E),
 }
 
+pub type ElfFileType = ElfT<(), (), ()>;
+
+impl<T32, T64, E> ElfT<T32, T64, E> {
+    #[inline]
+    fn extra(&self) -> &E {
+        match *self {
+            ElfT::Elf32LE(_, ref e) |
+            ElfT::Elf32BE(_, ref e) |
+            ElfT::Elf64LE(_, ref e) |
+            ElfT::Elf64BE(_, ref e) => &e,
+        }
+    }
+
+    #[inline]
+    fn apply<T, F1, F2>(&self, f1: F1, f2: F2) -> T where
+        F1: FnOnce(&T32) -> T,
+        F2: FnOnce(&T64) -> T,
+    {
+        match *self {
+            ElfT::Elf32LE(ref x, _) |
+            ElfT::Elf32BE(ref x, _) => f1(&x),
+            ElfT::Elf64LE(ref x, _) |
+            ElfT::Elf64BE(ref x, _) => f2(&x),
+        }
+    }
+
+    #[inline]
+    fn map<R32, R64, F1, F2>(self, f1: F1, f2: F2) -> ElfT<R32, R64, E> where
+        F1: FnOnce(T32) -> R32,
+        F2: FnOnce(T64) -> R64,
+    {
+        match self {
+            ElfT::Elf32LE(x, e) => ElfT::Elf32LE(f1(x), e),
+            ElfT::Elf32BE(x, e) => ElfT::Elf32BE(f1(x), e),
+            ElfT::Elf64LE(x, e) => ElfT::Elf64LE(f2(x), e),
+            ElfT::Elf64BE(x, e) => ElfT::Elf64BE(f2(x), e),
+        }
+    }
+}
+
 pub type ElfRef<'a, T32, T64, E> = ElfT<&'a T32, &'a T64, E>;
 pub type ElfSliceRef<'a, T32, T64, E> = ElfT<&'a [T32], &'a [T64], E>;
 
 impl<'a, T32, T64, E: Clone> ElfSliceRef<'a, T32, T64, E> {
     pub fn len(&self) -> usize {
-        match *self {
-            ElfT::Elf32LE(slice, _) => slice.len(),
-            ElfT::Elf32BE(slice, _) => slice.len(),
-            ElfT::Elf64LE(slice, _) => slice.len(),
-            ElfT::Elf64BE(slice, _) => slice.len(),
-        }
+        self.apply(|s| s.len(), |s| s.len())
     }
 
     pub fn get(&self, index: usize) -> Option<ElfRef<'a, T32, T64, E>> {
         if index >= self.len() {
             return None;
         }
-        Some(match *self {
-            ElfT::Elf32LE(slice, ref e) => ElfT::Elf32LE(&slice[index], e.clone()),
-            ElfT::Elf32BE(slice, ref e) => ElfT::Elf32BE(&slice[index], e.clone()),
-            ElfT::Elf64LE(slice, ref e) => ElfT::Elf64LE(&slice[index], e.clone()),
-            ElfT::Elf64BE(slice, ref e) => ElfT::Elf64BE(&slice[index], e.clone()),
-        })
+        Some(self.clone().map(|slice| &slice[index], |slice| &slice[index]))
     }
 
     pub fn iter(&self) -> ElfIter<'a, T32, T64, E> {
-        match *self {
-            ElfT::Elf32LE(slice, ref e) => ElfT::Elf32LE(slice.iter(), e.clone()),
-            ElfT::Elf32BE(slice, ref e) => ElfT::Elf32BE(slice.iter(), e.clone()),
-            ElfT::Elf64LE(slice, ref e) => ElfT::Elf64LE(slice.iter(), e.clone()),
-            ElfT::Elf64BE(slice, ref e) => ElfT::Elf64BE(slice.iter(), e.clone()),
-        }
+        self.clone().map(|slice| slice.iter(), |slice| slice.iter())
     }
 }
 
@@ -58,7 +83,7 @@ impl<'a, T32, T64, E: 'a + Clone> iter::IntoIterator for ElfSliceRef<'a, T32, T6
     type IntoIter = ElfIter<'a, T32, T64, E>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+        self.map(|slice| slice.iter(), |slice| slice.iter())
     }
 }
 
@@ -77,12 +102,7 @@ impl<'a, T32, T64, E: Clone> Iterator for ElfIter<'a, T32, T64, E> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        match *self {
-            ElfT::Elf32LE(ref it, _) => it.size_hint(),
-            ElfT::Elf32BE(ref it, _) => it.size_hint(),
-            ElfT::Elf64LE(ref it, _) => it.size_hint(),
-            ElfT::Elf64BE(ref it, _) => it.size_hint(),
-        }
+        self.apply(|it| it.size_hint(), |it| it.size_hint())
     }
 }
 
@@ -115,12 +135,7 @@ pub type HeaderRef<'a> = ElfRef<'a, Elf32_Ehdr, Elf64_Ehdr, ()>;
 
 impl<'a> HeaderRef<'a> {
     pub fn e_ident(&self) -> &[u8; EI_NIDENT] {
-        match *self {
-            ElfT::Elf32LE(hdr, _) => &hdr.e_ident,
-            ElfT::Elf32BE(hdr, _) => &hdr.e_ident,
-            ElfT::Elf64LE(hdr, _) => &hdr.e_ident,
-            ElfT::Elf64BE(hdr, _) => &hdr.e_ident,
-        }
+        self.apply(|hdr| &hdr.e_ident, |hdr| &hdr.e_ident)
     }
 
     header_field_impl!(e_type,      Elf32_Half, Elf64_Half);
@@ -154,12 +169,7 @@ impl<'a> SegmentRef<'a> {
     pub fn segment_data(&self) -> &[u8] {
         let offset = self.p_offset() as usize;
         let size = self.p_filesz() as usize;
-        let elf_data = match *self {
-            ElfT::Elf32LE(_, data) |
-            ElfT::Elf32BE(_, data) |
-            ElfT::Elf64LE(_, data) |
-            ElfT::Elf64BE(_, data) => data
-        };
+        let elf_data = self.extra();
         &elf_data[offset..offset+size]
     }
 }
@@ -186,12 +196,7 @@ impl<'a> SectionRef<'a> {
         }
         let offset = self.sh_offset() as usize;
         let size = self.sh_size() as usize;
-        let elf_data = match *self {
-            ElfT::Elf32LE(_, data) |
-            ElfT::Elf32BE(_, data) |
-            ElfT::Elf64LE(_, data) |
-            ElfT::Elf64BE(_, data) => data
-        };
+        let elf_data = self.extra();
         &elf_data[offset..offset+size]
     }
 }
@@ -307,6 +312,15 @@ impl<'a> Reader<'a> {
         self.data[EI_CLASS] == ELFCLASS64
     }
 
+    pub fn elf_file_type(&self) -> ElfFileType {
+        match (self.is_64bit(), self.little_endian()) {
+            (false, true)  => ElfT::Elf32LE((), ()),
+            (false, false) => ElfT::Elf32BE((), ()),
+            (true, true)   => ElfT::Elf64LE((), ()),
+            (true, false)  => ElfT::Elf64BE((), ()),
+        }
+    }
+
     fn slice_ref<T32, T64, E>(&self, offset: usize, num: usize, extra: E) -> ElfSliceRef<'a, T32, T64, E> where
         T32: 'a,
         T64: 'a,
@@ -316,23 +330,20 @@ impl<'a> Reader<'a> {
         let end = offset + num * size;
         assert!(end <= self.data.len());
         let ptr = &self.data[offset] as *const u8;
-        match (self.is_64bit(), self.little_endian()) {
-            (false, true)  => ElfT::Elf32LE(unsafe { slice::from_raw_parts(ptr as *const T32, num) }, extra),
-            (false, false) => ElfT::Elf32BE(unsafe { slice::from_raw_parts(ptr as *const T32, num) }, extra),
-            (true, true)   => ElfT::Elf64LE(unsafe { slice::from_raw_parts(ptr as *const T64, num) }, extra),
-            (true, false)  => ElfT::Elf64BE(unsafe { slice::from_raw_parts(ptr as *const T64, num) }, extra),
+        match self.elf_file_type() {
+            ElfT::Elf32LE(..) => ElfT::Elf32LE(unsafe { slice::from_raw_parts(ptr as *const T32, num) }, extra),
+            ElfT::Elf32BE(..) => ElfT::Elf32BE(unsafe { slice::from_raw_parts(ptr as *const T32, num) }, extra),
+            ElfT::Elf64LE(..) => ElfT::Elf64LE(unsafe { slice::from_raw_parts(ptr as *const T64, num) }, extra),
+            ElfT::Elf64BE(..) => ElfT::Elf64BE(unsafe { slice::from_raw_parts(ptr as *const T64, num) }, extra),
         }
     }
 
     pub fn header(&self) -> HeaderRef<'a> {
         let ptr = self.data as *const _;
         
-        match (self.is_64bit(), self.little_endian()) {
-            (false, true)  => ElfT::Elf32LE(unsafe { &*(ptr as *const Elf32_Ehdr) }, ()),
-            (false, false) => ElfT::Elf32BE(unsafe { &*(ptr as *const Elf32_Ehdr) }, ()),
-            (true, true)   => ElfT::Elf64LE(unsafe { &*(ptr as *const Elf64_Ehdr) }, ()),
-            (true, false)  => ElfT::Elf64BE(unsafe { &*(ptr as *const Elf64_Ehdr) }, ()),
-        }
+        self.elf_file_type().map(
+            |_| unsafe { &*(ptr as *const Elf32_Ehdr) },
+            |_| unsafe { &*(ptr as *const Elf64_Ehdr) })
     }
 
     pub fn segments(&self) -> SegmentsRef<'a> {
