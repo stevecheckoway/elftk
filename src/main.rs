@@ -16,8 +16,14 @@ fn main() -> io::Result<()> {
     }
     let data = fs::read(&args[1])?;
     let reader = elf::Reader::new(&data)?;
-    let hdr = reader.header();
-    println!("{:?}", hdr);
+
+    for (index, section) in reader.sections().into_iter().enumerate() {
+        if section.sh_type() == elf::SHT_REL {
+            println!("Found a REL section: {}", index);
+        } else if section.sh_type() == elf::SHT_RELA {
+            println!("Found a RELA section: {}", index);
+        }
+    }
 
     //let hdr = reader.header();
     //let mut new_hdr = elf::Elf64_Ehdr::new();

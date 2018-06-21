@@ -11,130 +11,115 @@ use elf_types::*;
 use elf_constants::*;
 
 #[derive(Debug, Clone)]
-pub enum ElfStructRef<'a, T32, T64, E = ()> where
-    T32: 'a,
-    T64: 'a,
-    E: 'a + Clone,
-{
-    Elf32LE(&'a T32, E),
-    Elf32BE(&'a T32, E),
-    Elf64LE(&'a T64, E),
-    Elf64BE(&'a T64, E),
+pub enum ElfT<T32, T64, E> {
+    Elf32LE(T32, E),
+    Elf32BE(T32, E),
+    Elf64LE(T64, E),
+    Elf64BE(T64, E),
 }
 
-#[derive(Debug, Clone)]
-pub enum ElfStructSliceRef<'a, T32, T64, E = ()> where
-    T32: 'a,
-    T64: 'a,
-    E: 'a + Clone,
-{
-    Elf32LE(&'a [T32], E),
-    Elf32BE(&'a [T32], E),
-    Elf64LE(&'a [T64], E),
-    Elf64BE(&'a [T64], E),
-}
+pub type ElfRef<'a, T32, T64, E> = ElfT<&'a T32, &'a T64, E>;
+pub type ElfSliceRef<'a, T32, T64, E> = ElfT<&'a [T32], &'a [T64], E>;
 
-impl<'a, T32, T64, E: Clone> ElfStructSliceRef<'a, T32, T64, E> {
+impl<'a, T32, T64, E: Clone> ElfSliceRef<'a, T32, T64, E> {
     pub fn len(&self) -> usize {
         match *self {
-            ElfStructSliceRef::Elf32LE(slice, _) => slice.len(),
-            ElfStructSliceRef::Elf32BE(slice, _) => slice.len(),
-            ElfStructSliceRef::Elf64LE(slice, _) => slice.len(),
-            ElfStructSliceRef::Elf64BE(slice, _) => slice.len(),
+            ElfT::Elf32LE(slice, _) => slice.len(),
+            ElfT::Elf32BE(slice, _) => slice.len(),
+            ElfT::Elf64LE(slice, _) => slice.len(),
+            ElfT::Elf64BE(slice, _) => slice.len(),
         }
     }
 
-    pub fn get(&self, index: usize) -> Option<ElfStructRef<'a, T32, T64, E>> {
+    pub fn get(&self, index: usize) -> Option<ElfRef<'a, T32, T64, E>> {
         if index >= self.len() {
             return None;
         }
         Some(match *self {
-            ElfStructSliceRef::Elf32LE(slice, ref e) => ElfStructRef::Elf32LE(&slice[index], e.clone()),
-            ElfStructSliceRef::Elf32BE(slice, ref e) => ElfStructRef::Elf32BE(&slice[index], e.clone()),
-            ElfStructSliceRef::Elf64LE(slice, ref e) => ElfStructRef::Elf64LE(&slice[index], e.clone()),
-            ElfStructSliceRef::Elf64BE(slice, ref e) => ElfStructRef::Elf64BE(&slice[index], e.clone()),
+            ElfT::Elf32LE(slice, ref e) => ElfT::Elf32LE(&slice[index], e.clone()),
+            ElfT::Elf32BE(slice, ref e) => ElfT::Elf32BE(&slice[index], e.clone()),
+            ElfT::Elf64LE(slice, ref e) => ElfT::Elf64LE(&slice[index], e.clone()),
+            ElfT::Elf64BE(slice, ref e) => ElfT::Elf64BE(&slice[index], e.clone()),
         })
     }
 
-    pub fn iter(&self) -> ElfStructIter<'a, T32, T64, E> {
-        ElfStructIter {
-            index: 0,
-            slice: match *self {
-                ElfStructSliceRef::Elf32LE(slice, ref e) => ElfStructSliceRef::Elf32LE(slice.clone(), e.clone()),
-                ElfStructSliceRef::Elf32BE(slice, ref e) => ElfStructSliceRef::Elf32BE(slice.clone(), e.clone()),
-                ElfStructSliceRef::Elf64LE(slice, ref e) => ElfStructSliceRef::Elf64LE(slice.clone(), e.clone()),
-                ElfStructSliceRef::Elf64BE(slice, ref e) => ElfStructSliceRef::Elf64BE(slice.clone(), e.clone()),
-            },
+    pub fn iter(&self) -> ElfIter<'a, T32, T64, E> {
+        match *self {
+            ElfT::Elf32LE(slice, ref e) => ElfT::Elf32LE(slice.iter(), e.clone()),
+            ElfT::Elf32BE(slice, ref e) => ElfT::Elf32BE(slice.iter(), e.clone()),
+            ElfT::Elf64LE(slice, ref e) => ElfT::Elf64LE(slice.iter(), e.clone()),
+            ElfT::Elf64BE(slice, ref e) => ElfT::Elf64BE(slice.iter(), e.clone()),
         }
     }
 }
 
-impl<'a, T32, T64, E: Clone> iter::IntoIterator for ElfStructSliceRef<'a, T32, T64, E> {
-    type Item = ElfStructRef<'a, T32, T64, E>;
-    type IntoIter = ElfStructIter<'a, T32, T64, E>;
+impl<'a, T32, T64, E: 'a + Clone> iter::IntoIterator for ElfSliceRef<'a, T32, T64, E> {
+    type Item = ElfRef<'a, T32, T64, E>;
+    type IntoIter = ElfIter<'a, T32, T64, E>;
 
     fn into_iter(self) -> Self::IntoIter {
-        ElfStructIter { index: 0, slice: self }
+        self.iter()
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ElfStructIter<'a, T32, T64, E> where
-    T32: 'a,
-    T64: 'a,
-    E: 'a + Clone,
-{
-    index: usize,
-    slice: ElfStructSliceRef<'a, T32, T64, E>,
-}
+pub type ElfIter<'a, T32, T64, E> = ElfT<slice::Iter<'a, T32>, slice::Iter<'a, T64>, E>;
 
-impl<'a, T32, T64, E: Clone> Iterator for ElfStructIter<'a, T32, T64, E> {
-    type Item = ElfStructRef<'a, T32, T64, E>;
+impl<'a, T32, T64, E: Clone> Iterator for ElfIter<'a, T32, T64, E> {
+    type Item = ElfRef<'a, T32, T64, E>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let result = self.slice.get(self.index);
-        if result.is_some() {
-            self.index += 1;
+        match *self {
+            ElfT::Elf32LE(ref mut it, ref e) => it.next().map(|x| ElfT::Elf32LE(x, e.clone())),
+            ElfT::Elf32BE(ref mut it, ref e) => it.next().map(|x| ElfT::Elf32BE(x, e.clone())),
+            ElfT::Elf64LE(ref mut it, ref e) => it.next().map(|x| ElfT::Elf64LE(x, e.clone())),
+            ElfT::Elf64BE(ref mut it, ref e) => it.next().map(|x| ElfT::Elf64BE(x, e.clone())),
         }
-        result
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.slice.len() - self.index;
-        (remaining, Some(remaining))
+        match *self {
+            ElfT::Elf32LE(ref it, _) => it.size_hint(),
+            ElfT::Elf32BE(ref it, _) => it.size_hint(),
+            ElfT::Elf64LE(ref it, _) => it.size_hint(),
+            ElfT::Elf64BE(ref it, _) => it.size_hint(),
+        }
     }
 }
 
-impl<'a, T32, T64, E: Clone> ExactSizeIterator for ElfStructIter<'a, T32, T64, E> {
-    fn len(&self) -> usize {
-        self.slice.len() - self.index
-    }
-}
+impl<'a, T32, T64, E> ExactSizeIterator for ElfIter<'a, T32, T64, E> where
+    slice::Iter<'a, T32>: ExactSizeIterator,
+    slice::Iter<'a, T64>: ExactSizeIterator,
+    E: Clone,
+{}
 
-impl<'a, T32, T64, E: Clone> iter::FusedIterator for ElfStructIter<'a, T32, T64, E> { }
+impl<'a, T32, T64, E> iter::FusedIterator for ElfIter<'a, T32, T64, E> where
+    slice::Iter<'a, T32>: iter::FusedIterator,
+    slice::Iter<'a, T64>: iter::FusedIterator,
+    E: Clone,
+{}
 
 macro_rules! header_field_impl {
     ( $field:ident, $t32:ident, $t64:ident ) => {
         pub fn $field(&self) -> $t64 {
             match *self {
-                ElfStructRef::Elf32LE(hdr, _) => $t32::from_le(hdr.$field) as $t64,
-                ElfStructRef::Elf32BE(hdr, _) => $t32::from_be(hdr.$field) as $t64,
-                ElfStructRef::Elf64LE(hdr, _) => $t64::from_le(hdr.$field),
-                ElfStructRef::Elf64BE(hdr, _) => $t64::from_be(hdr.$field),
+                ElfT::Elf32LE(hdr, _) => $t32::from_le(hdr.$field) as $t64,
+                ElfT::Elf32BE(hdr, _) => $t32::from_be(hdr.$field) as $t64,
+                ElfT::Elf64LE(hdr, _) => $t64::from_le(hdr.$field),
+                ElfT::Elf64BE(hdr, _) => $t64::from_be(hdr.$field),
             }
         }
     }
 }
 
-pub type HeaderRef<'a> = ElfStructRef<'a, Elf32_Ehdr, Elf64_Ehdr>;
+pub type HeaderRef<'a> = ElfRef<'a, Elf32_Ehdr, Elf64_Ehdr, ()>;
 
 impl<'a> HeaderRef<'a> {
     pub fn e_ident(&self) -> &[u8; EI_NIDENT] {
         match *self {
-            ElfStructRef::Elf32LE(hdr, _) => &hdr.e_ident,
-            ElfStructRef::Elf32BE(hdr, _) => &hdr.e_ident,
-            ElfStructRef::Elf64LE(hdr, _) => &hdr.e_ident,
-            ElfStructRef::Elf64BE(hdr, _) => &hdr.e_ident,
+            ElfT::Elf32LE(hdr, _) => &hdr.e_ident,
+            ElfT::Elf32BE(hdr, _) => &hdr.e_ident,
+            ElfT::Elf64LE(hdr, _) => &hdr.e_ident,
+            ElfT::Elf64BE(hdr, _) => &hdr.e_ident,
         }
     }
 
@@ -153,8 +138,8 @@ impl<'a> HeaderRef<'a> {
     header_field_impl!(e_shstrndx,  Elf32_Half, Elf64_Half);
 }
 
-pub type SegmentRef<'a> = ElfStructRef<'a, Elf32_Phdr, Elf64_Phdr, &'a [u8]>;
-pub type SegmentsRef<'a> = ElfStructSliceRef<'a, Elf32_Phdr, Elf64_Phdr, &'a [u8]>;
+pub type SegmentRef<'a> = ElfRef<'a, Elf32_Phdr, Elf64_Phdr, &'a [u8]>;
+pub type SegmentsRef<'a> = ElfSliceRef<'a, Elf32_Phdr, Elf64_Phdr, &'a [u8]>;
 
 impl<'a> SegmentRef<'a> {
     header_field_impl!(p_type,   Elf32_Word, Elf64_Word);
@@ -170,17 +155,17 @@ impl<'a> SegmentRef<'a> {
         let offset = self.p_offset() as usize;
         let size = self.p_filesz() as usize;
         let elf_data = match *self {
-            ElfStructRef::Elf32LE(_, data) |
-            ElfStructRef::Elf32BE(_, data) |
-            ElfStructRef::Elf64LE(_, data) |
-            ElfStructRef::Elf64BE(_, data) => data
+            ElfT::Elf32LE(_, data) |
+            ElfT::Elf32BE(_, data) |
+            ElfT::Elf64LE(_, data) |
+            ElfT::Elf64BE(_, data) => data
         };
         &elf_data[offset..offset+size]
     }
 }
 
-pub type SectionRef<'a> = ElfStructRef<'a, Elf32_Shdr, Elf64_Shdr, &'a [u8]>;
-pub type SectionsRef<'a> = ElfStructSliceRef<'a, Elf32_Shdr, Elf64_Shdr, &'a [u8]>;
+pub type SectionRef<'a> = ElfRef<'a, Elf32_Shdr, Elf64_Shdr, &'a [u8]>;
+pub type SectionsRef<'a> = ElfSliceRef<'a, Elf32_Shdr, Elf64_Shdr, &'a [u8]>;
 
 impl<'a> SectionRef<'a> {
     header_field_impl!(sh_name,      Elf32_Word, Elf64_Word);
@@ -202,10 +187,10 @@ impl<'a> SectionRef<'a> {
         let offset = self.sh_offset() as usize;
         let size = self.sh_size() as usize;
         let elf_data = match *self {
-            ElfStructRef::Elf32LE(_, data) |
-            ElfStructRef::Elf32BE(_, data) |
-            ElfStructRef::Elf64LE(_, data) |
-            ElfStructRef::Elf64BE(_, data) => data
+            ElfT::Elf32LE(_, data) |
+            ElfT::Elf32BE(_, data) |
+            ElfT::Elf64LE(_, data) |
+            ElfT::Elf64BE(_, data) => data
         };
         &elf_data[offset..offset+size]
     }
@@ -322,20 +307,20 @@ impl<'a> Reader<'a> {
         self.data[EI_CLASS] == ELFCLASS64
     }
 
-    fn slice_ref<T32, T64, E>(&self, offset: usize, num: usize, extra: E) -> ElfStructSliceRef<'a, T32, T64, E> where
+    fn slice_ref<T32, T64, E>(&self, offset: usize, num: usize, extra: E) -> ElfSliceRef<'a, T32, T64, E> where
         T32: 'a,
         T64: 'a,
         E: 'a + Clone,
     {
-        let size = if self.is_64bit() { mem::size_of::<T32>() } else { mem::size_of::<T64>() };
+        let size = if self.is_64bit() { mem::size_of::<T64>() } else { mem::size_of::<T32>() };
         let end = offset + num * size;
         assert!(end <= self.data.len());
         let ptr = &self.data[offset] as *const u8;
         match (self.is_64bit(), self.little_endian()) {
-            (false, true)  => ElfStructSliceRef::Elf32LE(unsafe { slice::from_raw_parts(ptr as *const T32, num) }, extra),
-            (false, false) => ElfStructSliceRef::Elf32BE(unsafe { slice::from_raw_parts(ptr as *const T32, num) }, extra),
-            (true, true)   => ElfStructSliceRef::Elf64LE(unsafe { slice::from_raw_parts(ptr as *const T64, num) }, extra),
-            (true, false)  => ElfStructSliceRef::Elf64BE(unsafe { slice::from_raw_parts(ptr as *const T64, num) }, extra),
+            (false, true)  => ElfT::Elf32LE(unsafe { slice::from_raw_parts(ptr as *const T32, num) }, extra),
+            (false, false) => ElfT::Elf32BE(unsafe { slice::from_raw_parts(ptr as *const T32, num) }, extra),
+            (true, true)   => ElfT::Elf64LE(unsafe { slice::from_raw_parts(ptr as *const T64, num) }, extra),
+            (true, false)  => ElfT::Elf64BE(unsafe { slice::from_raw_parts(ptr as *const T64, num) }, extra),
         }
     }
 
@@ -343,10 +328,10 @@ impl<'a> Reader<'a> {
         let ptr = self.data as *const _;
         
         match (self.is_64bit(), self.little_endian()) {
-            (false, true)  => ElfStructRef::Elf32LE(unsafe { &*(ptr as *const Elf32_Ehdr) }, ()),
-            (false, false) => ElfStructRef::Elf32BE(unsafe { &*(ptr as *const Elf32_Ehdr) }, ()),
-            (true, true)   => ElfStructRef::Elf64LE(unsafe { &*(ptr as *const Elf64_Ehdr) }, ()),
-            (true, false)  => ElfStructRef::Elf64BE(unsafe { &*(ptr as *const Elf64_Ehdr) }, ()),
+            (false, true)  => ElfT::Elf32LE(unsafe { &*(ptr as *const Elf32_Ehdr) }, ()),
+            (false, false) => ElfT::Elf32BE(unsafe { &*(ptr as *const Elf32_Ehdr) }, ()),
+            (true, true)   => ElfT::Elf64LE(unsafe { &*(ptr as *const Elf64_Ehdr) }, ()),
+            (true, false)  => ElfT::Elf64BE(unsafe { &*(ptr as *const Elf64_Ehdr) }, ()),
         }
     }
 
