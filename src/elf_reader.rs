@@ -18,8 +18,6 @@ pub enum ElfT<T32, T64, E> {
     Elf64BE(T64, E),
 }
 
-pub type ElfFileFormat = ElfT<(), (), ()>;
-
 impl<T32, T64, E> ElfT<T32, T64, E> {
     #[inline]
     fn extra(&self) -> &E {
@@ -57,6 +55,20 @@ impl<T32, T64, E> ElfT<T32, T64, E> {
         }
     }
 }
+
+pub type ElfFileFormat = ElfT<(), (), ()>;
+
+#[cfg(all(target_pointer_width = "32", target_endian = "little"))]
+pub const NATIVE_FILE_FORMAT: ElfFileFormat = ElfT::Elf32LE((), ());
+
+#[cfg(all(target_pointer_width = "32", target_endian = "big"))]
+pub const NATIVE_FILE_FORMAT: ElfFileFormat = ElfT::Elf32BE((), ());
+
+#[cfg(all(target_pointer_width = "64", target_endian = "little"))]
+pub const NATIVE_FILE_FORMAT: ElfFileFormat = ElfT::Elf64LE((), ());
+
+#[cfg(all(target_pointer_width = "64", target_endian = "big"))]
+pub const NATIVE_FILE_FORMAT: ElfFileFormat = ElfT::Elf64LE((), ());
 
 pub type ElfRef<'a, T32, T64, E> = ElfT<&'a T32, &'a T64, E>;
 pub type ElfSliceRef<'a, T32, T64, E> = ElfT<&'a [T32], &'a [T64], E>;
@@ -189,7 +201,9 @@ impl<'a> SectionRef<'a> {
     header_field_impl!(sh_addralign, Elf32_Word, Elf64_Xword);
     header_field_impl!(sh_entsize,   Elf32_Word, Elf64_Xword);
 
-    pub fn section_data(&self) -> &[u8] {
+    pub fn section_data<'b>(&'b self) -> &'a[u8] where
+        'a: 'b,
+    {
         let section_type = self.sh_type();
         if section_type == SHT_NULL || section_type == SHT_NOBITS {
             return &[][..];
@@ -198,6 +212,23 @@ impl<'a> SectionRef<'a> {
         let size = self.sh_size() as usize;
         let elf_data = self.extra();
         &elf_data[offset..offset+size]
+    }
+
+    #[inline]
+    fn reader<'b>(&'b self) -> Reader<'a> where
+        'a: 'b,
+    {
+        Reader { data: self.extra() }
+    }
+
+    pub fn section_name<'b>(&'b self) -> &'a [u8] where
+        'a: 'b,
+    {
+        let reader = self.reader();
+        reader.section_string_table_index()
+            .and_then(|index| StringTableSectionRef::from_section(reader.sections().get(index).unwrap()))
+            .and_then(|str_table| str_table.get_string(self.sh_name()))
+            .unwrap_or(&[][..])
     }
 }
 
@@ -237,11 +268,11 @@ impl<'a> Reader<'a> {
         }
 
         let reader = Reader { data: data };
-        Reader::validate_elf_file(&reader)?;
+        Reader::validate_length(&reader)?;
         Ok(reader)
     }
 
-    fn validate_elf_file(reader: &Reader<'a>) -> io::Result<()> {
+    fn validate_length(reader: &Reader<'a>) -> io::Result<()> {
         let hdr = reader.header();
         let len = reader.data.len() as u64;
         let is_64bit = reader.is_64bit();
@@ -281,18 +312,37 @@ impl<'a> Reader<'a> {
         let shoff = hdr.e_shoff();
         if shoff > 0 {
             let size = hdr.e_shentsize() as u64;
-            let num = hdr.e_shnum() as u64;
+            let shnum = hdr.e_shnum();
+            let shstrndx = hdr.e_shstrndx();
+
+            if shnum >= SHN_LORESERVE {
+                return invalid_data(&format!("ELF header member e_shnum = {} is invalid", shnum));
+            }
+            if shstrndx >= SHN_LORESERVE && shstrndx != SHN_XINDEX {
+                return invalid_data(&format!("ELF header member e_shstrndx = {} is invalid", shstrndx));
+            }
+
+            // If e_shnum == 0 (resp. e_shstrndx == SHN_XINDEX), then there must be at least one
+            // section header in the table whose st_size (resp. st_link) member holds the real
+            // number of sections (resp. index of the section string table).
+            if (shnum == 0 || shstrndx == SHN_XINDEX) && !array_in_bounds(shoff, size, 1) {
+                return invalid_data("File too small for section headers");
+            }
+            let num = reader.num_sections() as u64;
             if !array_in_bounds(shoff, size, num) {
                 return invalid_data("File too small for section headers");
             }
+
             if (is_64bit && size as usize != mem::size_of::<Elf64_Shdr>()) ||
                (!is_64bit && size as usize != mem::size_of::<Elf32_Shdr>())
             {
                 return invalid_data(&format!("Unexpected section header size {} for {}-bit ELF",
                                              size, { if is_64bit { "64" } else { "32" } }));
             }
-            // Check that the sections are contained in the file
-            for (index, section) in reader.sections().into_iter().enumerate() {
+
+            // Check that the sections are contained in the file.
+            let sections = reader.sections();
+            for (index, section) in sections.iter().enumerate() {
                 let section_type = section.sh_type();
                 if section_type != SHT_NOBITS && section_type != SHT_NULL &&
                    !array_in_bounds(section.sh_offset(), section.sh_size(), 1)
@@ -354,10 +404,108 @@ impl<'a> Reader<'a> {
         self.slice_ref(phoff, phnum, self.data)
     }
 
+    // The ELF file MUST have sections if this file is called.
+    fn section_0(&self) -> SectionRef<'a> {
+        let ehdr = self.header();
+        let shoff = ehdr.e_shoff();
+        assert!(shoff > 0);
+        let ptr = &self.data[shoff as usize] as *const u8;
+        self.file_format_with_extra(self.data).map(
+            move |_| unsafe { &*(ptr as *const Elf32_Shdr) },
+            move |_| unsafe { &*(ptr as *const Elf64_Shdr) })
+    }
+
+    pub fn num_sections(&self) -> usize {
+        // If e_shoff > 0 and e_shnum() == 0, then section 0's st_size member holds the actual
+        // number of sections.
+        let ehdr = self.header();
+        let shoff = ehdr.e_shoff();
+        if shoff == 0 {
+            return 0;
+        }
+        let shnum = ehdr.e_shnum();
+        if shnum > 0 {
+            shnum as usize
+        } else {
+            self.section_0().sh_size() as usize
+        }
+    }
+
+    pub fn section_string_table_index(&self) -> Option<usize> {
+        let ehdr = self.header();
+        let shstrndx = ehdr.e_shstrndx();
+        if shstrndx == SHN_UNDEF {
+            return None;
+        }
+        if shstrndx == SHN_XINDEX {
+            Some(self.section_0().sh_link() as usize)
+        } else {
+            Some(shstrndx as usize)
+        }
+    }
+
     pub fn sections(&self) -> SectionsRef<'a> {
         let ehdr = self.header();
         let shoff = ehdr.e_shoff() as usize;
-        let shnum = if shoff == 0 { 0 } else { ehdr.e_shnum() as usize };
+        let shnum = self.num_sections();
         self.slice_ref(shoff, shnum, self.data)
+    }
+}
+
+
+macro_rules! facade {
+    { $($name:ident : $t64:ty),* } => {
+        $( #[inline] pub fn $name(&self) -> $t64 { (self.0).$name() } )*
+    }
+}
+
+macro_rules! section_type {
+    ($name:ident, $($type:pat)|+) => {
+        pub struct $name<'a>(SectionRef<'a>);
+        impl<'a> $name<'a> {
+            facade! {
+                sh_name:      Elf64_Word,
+                sh_type:      Elf64_Word,
+                sh_flags:     Elf64_Xword,
+                sh_addr:      Elf64_Addr,
+                sh_offset:    Elf64_Off,
+                sh_size:      Elf64_Xword,
+                sh_link:      Elf64_Word,
+                sh_info:      Elf64_Word,
+                sh_addralign: Elf64_Xword,
+                sh_entsize:   Elf64_Xword,
+                section_data: &'a [u8],
+                section_name: &'a [u8]
+            }
+
+            pub fn to_section(self) -> SectionRef<'a> { self.0 }
+
+            pub fn from_section(sec: SectionRef<'a>) -> Option<Self> {
+                match sec.sh_type() {
+                    $($type)|+ => Some($name(sec)),
+                    _          => None,
+                }
+            }
+        }
+    }
+}
+
+section_type!(SymbolTableSectionRef, SHT_SYMTAB | SHT_DYNSYM);
+section_type!(StringTableSectionRef, SHT_STRTAB);
+section_type!(RelaSectionRef, SHT_RELA);
+section_type!(RelSectionRef, SHT_REL);
+section_type!(NoteSectionRef, SHT_NOTE);
+section_type!(SymbolHashTableSectionRef, SHT_HASH);
+section_type!(PointerArraySectionRef, SHT_INIT_ARRAY | SHT_FINI_ARRAY | SHT_PREINIT_ARRAY);
+section_type!(SymbolTableSectionIndexSectionRef, SHT_SYMTAB_SHNDX);
+
+impl<'a> StringTableSectionRef<'a> {
+    pub fn get_string<'b>(&'b self, index: Elf_Word) -> Option<&'a [u8]> where
+        'a: 'b,
+    {
+        let index = index as usize;
+        let data = self.section_data();
+        data.iter().skip(index).position(|&x| x == 0)
+            .map(|len| &data[index..index+len])
     }
 }

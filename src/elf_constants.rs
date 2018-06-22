@@ -3,6 +3,18 @@
 
 use elf_base_types::{Elf_Half, Elf_Word, Elf_Xword};
 
+macro_rules! constants {
+    ($name:ident, $t:ty, $($id:ident = $val:expr ; $display:expr),*) => {
+        $( pub const $id: $t = $val; )*
+        pub fn $name(v: $t) -> &'static str {
+            match v {
+                $( $id => $display, )*
+                _ => ""
+            }
+        }
+    }
+}
+
 // Elf header constants.
 // e_ident
 pub const EI_MAG0:       usize = 0;  /// File identification
@@ -59,11 +71,12 @@ pub const ELFOSABI_OPENVOS:  u8 = 18; /// Stratus Technologies OpenVOS
 // EI_PAD through EI_NIDENT should be 0
 
 // e_type
-pub const ET_NONE:   Elf_Half = 0;      /// No file type
-pub const ET_REL:    Elf_Half = 1;      /// Relocatable file
-pub const ET_EXEC:   Elf_Half = 2;      /// Executable file
-pub const ET_DYN:    Elf_Half = 3;      /// Shared object file
-pub const ET_CORE:   Elf_Half = 4;      /// Core file
+constants!(elf_type_name, Elf_Half,
+           ET_NONE = 0; "NONE",
+           ET_REL  = 1; "REL",
+           ET_EXEC = 2; "EXEC",
+           ET_DYN  = 3; "DYN",
+           ET_CORE = 4; "CORE");
 pub const ET_LOOS:   Elf_Half = 0xfe00; /// Operating system-specific
 pub const ET_HIOS:   Elf_Half = 0xfeff; /// Operating system-specific
 pub const ET_LOPROC: Elf_Half = 0xff00; /// Processor-specific
@@ -272,23 +285,24 @@ pub const SHN_XINDEX:    Elf_Half = 0xffff;
 pub const SHN_HIRESERVE: Elf_Half = 0xffff;
 
 // Section Types sh_type
-pub const SHT_NULL:          Elf_Word = 0;
-pub const SHT_PROGBITS:      Elf_Word = 1;
-pub const SHT_SYMTAB:        Elf_Word = 2;
-pub const SHT_STRTAB:        Elf_Word = 3;
-pub const SHT_RELA:          Elf_Word = 4;
-pub const SHT_HASH:          Elf_Word = 5;
-pub const SHT_DYNAMIC:       Elf_Word = 6;
-pub const SHT_NOTE:          Elf_Word = 7;
-pub const SHT_NOBITS:        Elf_Word = 8;
-pub const SHT_REL:           Elf_Word = 9;
-pub const SHT_SHLIB:         Elf_Word = 10;
-pub const SHT_DYNSYM:        Elf_Word = 11;
-pub const SHT_INIT_ARRAY:    Elf_Word = 14;
-pub const SHT_FINI_ARRAY:    Elf_Word = 15;
-pub const SHT_PREINIT_ARRAY: Elf_Word = 16;
-pub const SHT_GROUP:         Elf_Word = 17;
-pub const SHT_SYMTAB_SHNDX:  Elf_Word = 18;
+constants!(section_type_name, Elf_Word,
+           SHT_NULL          = 0;  "NULL",
+           SHT_PROGBITS      = 1;  "PROGBITS",
+           SHT_SYMTAB        = 2;  "SYMTAB",
+           SHT_STRTAB        = 3;  "STRTAB",
+           SHT_RELA          = 4;  "RELA",
+           SHT_HASH          = 5;  "HASH",
+           SHT_DYNAMIC       = 6;  "DYNAMIC",
+           SHT_NOTE          = 7;  "NOTE",
+           SHT_NOBITS        = 8;  "NOBITS",
+           SHT_REL           = 9;  "REL",
+           SHT_SHLIB         = 10; "SHLIB",
+           SHT_DYNSYM        = 11; "DYNSYM",
+           SHT_INIT_ARRAY    = 14; "INIT_ARRAY",
+           SHT_FINI_ARRAY    = 15; "FINI_ARRAY",
+           SHT_PREINIT_ARRAY = 16; "PREINIT_ARRAY",
+           SHT_GROUP         = 17; "GROUP",
+           SHT_SYMTAB_SHNDX  = 18; "SYMTAB_SHNDX");
 pub const SHT_LOOS:          Elf_Word = 0x60000000;
 pub const SHT_HIOS:          Elf_Word = 0x6fffffff;
 pub const SHT_LOPROC:        Elf_Word = 0x70000000;
@@ -310,6 +324,7 @@ pub const SHF_TLS:              Elf_Xword = 0x400;
 pub const SHF_COMPRESSED:       Elf_Xword = 0x800;
 pub const SHF_MASKOS:           Elf_Xword = 0x0ff00000;
 pub const SHF_MASKPROC:         Elf_Xword = 0xf0000000;
+pub const SHF_EXCLUDED:         Elf_Xword = 0x80000000;
 
 // ch_type
 pub const ELFCOMPRESS_ZLIB:   Elf_Word = 1;
@@ -328,29 +343,54 @@ pub const GRP_MASKPROC: Elf_Word = 0xf0000000;
 pub const STN_UNDEF: Elf_Half = 0;
 
 // st_info
-pub const STB_LOCAL:  u8 = 0;
-pub const STB_GLOBAL: u8 = 1;
-pub const STB_WEAK:   u8 = 2;
+constants!(symbol_binding_name, u8,
+           STB_LOCAL  = 0; "LOCAL",
+           STB_GLOBAL = 1; "GLOBAL",
+           STB_WEAK   = 2; "WEAK");
 pub const STB_LOOS:   u8 = 10;
 pub const STB_HIOS:   u8 = 12;
 pub const STB_LOPROC: u8 = 13;
 pub const STB_HIPROC: u8 = 15;
 
-pub const STT_NOTYPE:  u8 = 0;
-pub const STT_OBJECT:  u8 = 1;
-pub const STT_FUNC:    u8 = 2;
-pub const STT_SECTION: u8 = 3;
-pub const STT_FILE:    u8 = 4;
-pub const STT_COMMON:  u8 = 5;
-pub const STT_TLS:     u8 = 6;
+constants!(symbol_type_name, u8,
+           STT_NOTYPE  = 0; "NOTYPE",
+           STT_OBJECT  = 1; "OBJECT",
+           STT_FUNC    = 2; "FUNC",
+           STT_SECTION = 3; "SECTION",
+           STT_FILE    = 4; "FILE",
+           STT_COMMON  = 5; "COMMON",
+           STT_TLS     = 6; "TLS");
 pub const STT_LOOS:    u8 = 10;
 pub const STT_HIOS:    u8 = 12;
 pub const STT_LOPROC:  u8 = 13;
 pub const STT_HIPROC:  u8 = 15;
 
 // st_other
-pub const STV_DEFAULT:   u8 = 0;
-pub const STV_INTERNAL:  u8 = 1;
-pub const STV_HIDDEN:    u8 = 2;
-pub const STV_PROTECTED: u8 = 3;
+constants!(symbol_visibility_name, u8,
+           STV_DEFAULT   = 0; "DEFAULT",
+           STV_INTERNAL  = 1; "INTERNAL",
+           STV_HIDDEN    = 2; "HIDDEN",
+           STV_PROTECTED = 3; "PROTECTED");
 
+// Segments
+// p_type
+constants!(segment_type_name, Elf_Word,
+           PT_NULL    = 0; "NULL",
+           PT_LOAD    = 1; "LOAD",
+           PT_DYNAMIC = 2; "DYNAMIC",
+           PT_INTERP  = 3; "INTERP",
+           PT_NOTE    = 4; "NOTE",
+           PT_SHLIB   = 5; "SHLIB",
+           PT_PHDR    = 6; "PHDR",
+           PT_TLS     = 7; "TLS");
+pub const PT_LOOS:   Elf_Word = 0x60000000;
+pub const PT_HIOS:   Elf_Word = 0x6fffffff;
+pub const PT_LOPROC: Elf_Word = 0x70000000;
+pub const PT_HIPROC: Elf_Word = 0x7fffffff;
+
+// p_flags
+pub const PF_X:        Elf_Word = 1;
+pub const PF_W:        Elf_Word = 2;
+pub const PF_R:        Elf_Word = 4;
+pub const PF_MASKOS:   Elf_Word = 0x0ff00000;
+pub const PF_MASKPROC: Elf_Word = 0xf0000000;
