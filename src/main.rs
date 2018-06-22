@@ -1,9 +1,6 @@
-mod elf;
-mod elf_base_types;
-mod elf_constants;
-mod elf_types;
-mod elf_reader;
+mod elftk;
 
+use elftk as elf;
 
 use std::fs;
 use std::io;
