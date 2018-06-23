@@ -257,7 +257,7 @@ impl<'a> Reader<'a> {
     fn slice_ref<T32, T64, E>(&self, offset: usize, num: usize, extra: E) -> ElfSliceRef<'a, T32, T64, E> where
         T32: 'a,
         T64: 'a,
-        E: 'a + Clone,
+        E: 'a,
     {
         let size = if self.is_64bit() { mem::size_of::<T64>() } else { mem::size_of::<T32>() };
         let end = offset + num * size;
@@ -269,7 +269,7 @@ impl<'a> Reader<'a> {
     }
 
     pub fn header(&self) -> HeaderRef<'a> {
-        let ptr = self.data as *const _;
+        let ptr = self.data.as_ptr();
         
         self.file_format().map(
             move |_| unsafe { &*(ptr as *const Elf32_Ehdr) },
@@ -279,19 +279,25 @@ impl<'a> Reader<'a> {
     pub fn segments(&self) -> SegmentsRef<'a> {
         let ehdr = self.header();
         let phoff = ehdr.e_phoff() as usize;
+        let phentsize = ehdr.e_phentsize() as usize;
         let phnum = if phoff == 0 { 0 } else { ehdr.e_phnum() as usize };
-        self.slice_ref(phoff, phnum, self.data)
+        let len = phentsize * phnum;
+        let data = &self.data[phoff..phoff+len];
+        SegmentsRef::try_from(ehdr.construct_from(|| data, || data, self.data)).unwrap()
     }
 
     // The ELF file MUST have sections if this file is called.
     fn section_0(&self) -> SectionRef<'a> {
         let ehdr = self.header();
-        let shoff = ehdr.e_shoff();
-        assert!(shoff > 0);
-        let ptr = &self.data[shoff as usize] as *const u8;
-        self.file_format_with_extra(self.data).map(
-            move |_| unsafe { &*(ptr as *const Elf32_Shdr) },
-            move |_| unsafe { &*(ptr as *const Elf64_Shdr) })
+        let shoff = ehdr.e_shoff() as usize;
+        let shentsize = ehdr.e_shentsize() as usize;
+        debug_assert!(shoff > 0);
+        let shdr_data = &self.data[shoff..shoff+shentsize];
+        SectionRef::try_from(ehdr.construct_from(|| shdr_data, || shdr_data, self.data)).unwrap()
+        //let ptr = &self.data[shoff as usize] as *const u8;
+        //self.file_format_with_extra(self.data).map(
+        //    move |_| unsafe { &*(ptr as *const Elf32_Shdr) },
+        //    move |_| unsafe { &*(ptr as *const Elf64_Shdr) })
     }
 
     pub fn num_sections(&self) -> usize {
@@ -326,8 +332,11 @@ impl<'a> Reader<'a> {
     pub fn sections(&self) -> SectionsRef<'a> {
         let ehdr = self.header();
         let shoff = ehdr.e_shoff() as usize;
+        let shentsize = ehdr.e_shentsize() as usize;
         let shnum = self.num_sections();
-        self.slice_ref(shoff, shnum, self.data)
+        let len = shentsize * shnum;
+        let data = &self.data[shoff..shoff+len];
+        SectionsRef::try_from(ehdr.construct_from(|| data, || data, self.data)).unwrap()
     }
 }
 
