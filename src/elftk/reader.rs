@@ -282,8 +282,8 @@ impl<'a> Reader<'a> {
         let phentsize = ehdr.e_phentsize() as usize;
         let phnum = if phoff == 0 { 0 } else { ehdr.e_phnum() as usize };
         let len = phentsize * phnum;
-        let data = &self.data[phoff..phoff+len];
-        SegmentsRef::try_from(ehdr.construct_from(|| data, || data, self.data)).unwrap()
+        let phdr_data = &self.data[phoff..phoff+len];
+        SegmentsRef::try_from(ehdr.construct_from(phdr_data, self.data)).unwrap()
     }
 
     // The ELF file MUST have sections if this file is called.
@@ -293,11 +293,7 @@ impl<'a> Reader<'a> {
         let shentsize = ehdr.e_shentsize() as usize;
         debug_assert!(shoff > 0);
         let shdr_data = &self.data[shoff..shoff+shentsize];
-        SectionRef::try_from(ehdr.construct_from(|| shdr_data, || shdr_data, self.data)).unwrap()
-        //let ptr = &self.data[shoff as usize] as *const u8;
-        //self.file_format_with_extra(self.data).map(
-        //    move |_| unsafe { &*(ptr as *const Elf32_Shdr) },
-        //    move |_| unsafe { &*(ptr as *const Elf64_Shdr) })
+        SectionRef::try_from(ehdr.construct_from(shdr_data, self.data)).unwrap()
     }
 
     pub fn num_sections(&self) -> usize {
@@ -335,8 +331,8 @@ impl<'a> Reader<'a> {
         let shentsize = ehdr.e_shentsize() as usize;
         let shnum = self.num_sections();
         let len = shentsize * shnum;
-        let data = &self.data[shoff..shoff+len];
-        SectionsRef::try_from(ehdr.construct_from(|| data, || data, self.data)).unwrap()
+        let shdr_data = &self.data[shoff..shoff+len];
+        SectionsRef::try_from(ehdr.construct_from(shdr_data, self.data)).unwrap()
     }
 }
 

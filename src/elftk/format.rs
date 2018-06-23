@@ -11,21 +11,15 @@ pub enum ElfT<T32, T64, E> {
 }
 
 impl<T32, T64, E> ElfT<T32, T64, E> {
-    /// Construct a new `ElfT` with the same format (32- or 64-bit, little- or bit-endian) by using
-    /// `f1` to construct the 32-bit value or `f2` to construct the 64-bit value and with the given
-    /// extra value `e`.
-    ///
-    /// Both `f1` and `f2` must return values suitable for both little- and big-endian.
+    /// Construct a new `ElfT` with the same format (32- or 64-bit, little- or bit-endian) with `x`
+    /// as the data and `e` as the extra value.
     #[inline]
-    pub(super) fn construct_from<R32, R64, F1, F2, E2>(&self, f1: F1, f2: F2, e: E2) -> ElfT<R32, R64, E2> where
-        F1: FnOnce() -> R32,
-        F2: FnOnce() -> R64,
-    {
+    pub(super) fn construct_from<R, E2>(&self, x: R, e: E2) -> ElfT<R, R, E2> {
         match *self {
-            ElfT::Elf32LE(..) => ElfT::Elf32LE(f1(), e),
-            ElfT::Elf32BE(..) => ElfT::Elf32BE(f1(), e),
-            ElfT::Elf64LE(..) => ElfT::Elf64LE(f2(), e),
-            ElfT::Elf64BE(..) => ElfT::Elf64BE(f2(), e),
+            ElfT::Elf32LE(..) => ElfT::Elf32LE(x, e),
+            ElfT::Elf32BE(..) => ElfT::Elf32BE(x, e),
+            ElfT::Elf64LE(..) => ElfT::Elf64LE(x, e),
+            ElfT::Elf64BE(..) => ElfT::Elf64BE(x, e),
         }
     }
 
