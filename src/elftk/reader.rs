@@ -9,7 +9,7 @@ use super::constants::*;
 use super::format::*;
 use super::types::*;
 
-macro_rules! header_field_impl {
+macro_rules! field_impl {
     ( $field:ident, $t32:ident, $t64:ident ) => {
         pub fn $field(&self) -> $t64 {
             match *self {
@@ -29,33 +29,33 @@ impl<'a> HeaderRef<'a> {
         self.apply(|hdr| &hdr.e_ident, |hdr| &hdr.e_ident)
     }
 
-    header_field_impl!(e_type,      Elf32_Half, Elf64_Half);
-    header_field_impl!(e_machine,   Elf32_Half, Elf64_Half);
-    header_field_impl!(e_version,   Elf32_Word, Elf64_Word);
-    header_field_impl!(e_entry,     Elf32_Addr, Elf64_Addr);
-    header_field_impl!(e_phoff,     Elf32_Off,  Elf64_Off);
-    header_field_impl!(e_shoff,     Elf32_Off,  Elf64_Off);
-    header_field_impl!(e_flags,     Elf32_Word, Elf64_Word);
-    header_field_impl!(e_ehsize,    Elf32_Half, Elf64_Half);
-    header_field_impl!(e_phentsize, Elf32_Half, Elf64_Half);
-    header_field_impl!(e_phnum,     Elf32_Half, Elf64_Half);
-    header_field_impl!(e_shentsize, Elf32_Half, Elf64_Half);
-    header_field_impl!(e_shnum,     Elf32_Half, Elf64_Half);
-    header_field_impl!(e_shstrndx,  Elf32_Half, Elf64_Half);
+    field_impl!(e_type,      Elf32_Half, Elf64_Half);
+    field_impl!(e_machine,   Elf32_Half, Elf64_Half);
+    field_impl!(e_version,   Elf32_Word, Elf64_Word);
+    field_impl!(e_entry,     Elf32_Addr, Elf64_Addr);
+    field_impl!(e_phoff,     Elf32_Off,  Elf64_Off);
+    field_impl!(e_shoff,     Elf32_Off,  Elf64_Off);
+    field_impl!(e_flags,     Elf32_Word, Elf64_Word);
+    field_impl!(e_ehsize,    Elf32_Half, Elf64_Half);
+    field_impl!(e_phentsize, Elf32_Half, Elf64_Half);
+    field_impl!(e_phnum,     Elf32_Half, Elf64_Half);
+    field_impl!(e_shentsize, Elf32_Half, Elf64_Half);
+    field_impl!(e_shnum,     Elf32_Half, Elf64_Half);
+    field_impl!(e_shstrndx,  Elf32_Half, Elf64_Half);
 }
 
 pub type SegmentRef<'a> = ElfRef<'a, Elf32_Phdr, Elf64_Phdr, &'a [u8]>;
 pub type SegmentsRef<'a> = ElfSliceRef<'a, Elf32_Phdr, Elf64_Phdr, &'a [u8]>;
 
 impl<'a> SegmentRef<'a> {
-    header_field_impl!(p_type,   Elf32_Word, Elf64_Word);
-    header_field_impl!(p_offset, Elf32_Off,  Elf64_Off);
-    header_field_impl!(p_vaddr,  Elf32_Addr, Elf64_Addr);
-    header_field_impl!(p_paddr,  Elf32_Addr, Elf64_Addr);
-    header_field_impl!(p_filesz, Elf32_Word, Elf64_Xword);
-    header_field_impl!(p_memsz,  Elf32_Word, Elf64_Xword);
-    header_field_impl!(p_flags,  Elf32_Word, Elf64_Word);
-    header_field_impl!(p_align,  Elf32_Word, Elf64_Xword);
+    field_impl!(p_type,   Elf32_Word, Elf64_Word);
+    field_impl!(p_offset, Elf32_Off,  Elf64_Off);
+    field_impl!(p_vaddr,  Elf32_Addr, Elf64_Addr);
+    field_impl!(p_paddr,  Elf32_Addr, Elf64_Addr);
+    field_impl!(p_filesz, Elf32_Word, Elf64_Xword);
+    field_impl!(p_memsz,  Elf32_Word, Elf64_Xword);
+    field_impl!(p_flags,  Elf32_Word, Elf64_Word);
+    field_impl!(p_align,  Elf32_Word, Elf64_Xword);
 
     pub fn segment_data(&self) -> &[u8] {
         let offset = self.p_offset() as usize;
@@ -69,16 +69,16 @@ pub type SectionRef<'a> = ElfRef<'a, Elf32_Shdr, Elf64_Shdr, &'a [u8]>;
 pub type SectionsRef<'a> = ElfSliceRef<'a, Elf32_Shdr, Elf64_Shdr, &'a [u8]>;
 
 impl<'a> SectionRef<'a> {
-    header_field_impl!(sh_name,      Elf32_Word, Elf64_Word);
-    header_field_impl!(sh_type,      Elf32_Word, Elf64_Word);
-    header_field_impl!(sh_flags,     Elf32_Word, Elf64_Xword);
-    header_field_impl!(sh_addr,      Elf32_Addr, Elf64_Addr);
-    header_field_impl!(sh_offset,    Elf32_Off,  Elf64_Off);
-    header_field_impl!(sh_size,      Elf32_Word, Elf64_Xword);
-    header_field_impl!(sh_link,      Elf32_Word, Elf64_Word);
-    header_field_impl!(sh_info,      Elf32_Word, Elf64_Word);
-    header_field_impl!(sh_addralign, Elf32_Word, Elf64_Xword);
-    header_field_impl!(sh_entsize,   Elf32_Word, Elf64_Xword);
+    field_impl!(sh_name,      Elf32_Word, Elf64_Word);
+    field_impl!(sh_type,      Elf32_Word, Elf64_Word);
+    field_impl!(sh_flags,     Elf32_Word, Elf64_Xword);
+    field_impl!(sh_addr,      Elf32_Addr, Elf64_Addr);
+    field_impl!(sh_offset,    Elf32_Off,  Elf64_Off);
+    field_impl!(sh_size,      Elf32_Word, Elf64_Xword);
+    field_impl!(sh_link,      Elf32_Word, Elf64_Word);
+    field_impl!(sh_info,      Elf32_Word, Elf64_Word);
+    field_impl!(sh_addralign, Elf32_Word, Elf64_Xword);
+    field_impl!(sh_entsize,   Elf32_Word, Elf64_Xword);
 
     pub fn section_data<'b>(&'b self) -> &'a[u8] where
         'a: 'b,
