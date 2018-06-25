@@ -10,13 +10,23 @@ use super::format::*;
 use super::types::*;
 
 macro_rules! field_impl {
+    ( $field:ident, u8, u8) => {
+        pub fn $field(&self) -> u8 {
+            match *self {
+                ElfT::Elf32LE(s, _) => s.$field,
+                ElfT::Elf32BE(s, _) => s.$field,
+                ElfT::Elf64LE(s, _) => s.$field,
+                ElfT::Elf64BE(s, _) => s.$field,
+            }
+        }
+    };
     ( $field:ident, $t32:ident, $t64:ident ) => {
         pub fn $field(&self) -> $t64 {
             match *self {
-                ElfT::Elf32LE(hdr, _) => $t32::from_le(hdr.$field) as $t64,
-                ElfT::Elf32BE(hdr, _) => $t32::from_be(hdr.$field) as $t64,
-                ElfT::Elf64LE(hdr, _) => $t64::from_le(hdr.$field),
-                ElfT::Elf64BE(hdr, _) => $t64::from_be(hdr.$field),
+                ElfT::Elf32LE(s, _) => $t32::from_le(s.$field) as $t64,
+                ElfT::Elf32BE(s, _) => $t32::from_be(s.$field) as $t64,
+                ElfT::Elf64LE(s, _) => $t64::from_le(s.$field),
+                ElfT::Elf64BE(s, _) => $t64::from_be(s.$field),
             }
         }
     }
@@ -362,7 +372,7 @@ macro_rules! section_type {
                 section_name: &'a [u8]
             }
 
-            pub fn to_section(self) -> SectionRef<'a> { self.0 }
+            pub fn into_section(self) -> SectionRef<'a> { self.0 }
 
             pub fn from_section(sec: SectionRef<'a>) -> Option<Self> {
                 match sec.sh_type() {
@@ -374,8 +384,8 @@ macro_rules! section_type {
     }
 }
 
-section_type!(SymbolTableSectionRef, SHT_SYMTAB | SHT_DYNSYM);
 section_type!(StringTableSectionRef, SHT_STRTAB);
+section_type!(SymbolTableSectionRef, SHT_SYMTAB | SHT_DYNSYM);
 section_type!(RelaSectionRef, SHT_RELA);
 section_type!(RelSectionRef, SHT_REL);
 section_type!(NoteSectionRef, SHT_NOTE);
@@ -392,4 +402,23 @@ impl<'a> StringTableSectionRef<'a> {
         data.iter().skip(index).position(|&x| x == 0)
             .map(|len| &data[index..index+len])
     }
+}
+
+pub type SymbolTableEntryRef<'a> = ElfRef<'a, Elf32_Sym, Elf64_Sym, &'a [u8]>;
+pub type SymbolTableRef<'a> = ElfSliceRef<'a, Elf32_Sym, Elf64_Sym, &'a [u8]>;
+
+impl<'a> SymbolTableEntryRef<'a> {
+    field_impl!(st_name,  Elf32_Word, Elf64_Word);
+    field_impl!(st_value, Elf32_Addr, Elf64_Addr);
+    field_impl!(st_size,  Elf32_Word, Elf64_Xword);
+    field_impl!(st_info,  u8,         u8);
+    field_impl!(st_other, u8,         u8);
+    field_impl!(st_shndx, Elf32_Half, Elf64_Half);
+
+    pub fn name<'b>(&'b self) -> Option<&'a [u8]> {
+        None
+    }
+}
+
+impl<'a> SymbolTableSectionRef<'a> {
 }

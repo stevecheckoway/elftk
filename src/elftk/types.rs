@@ -123,58 +123,58 @@ unsafe impl ElfStruct for Elf64_Chdr {}
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Elf32_Sym {
-    st_name:   Elf32_Word,
-    st_value:  Elf32_Addr,
-    st_size:   Elf32_Word,
-    st_info:   u8,
-    st_other:  u8,
-    st_shndx:  Elf32_Half,
+    pub st_name:  Elf32_Word,
+    pub st_value: Elf32_Addr,
+    pub st_size:  Elf32_Word,
+    pub st_info:  u8,
+    pub st_other: u8,
+    pub st_shndx: Elf32_Half,
 }
 unsafe impl ElfStruct for Elf32_Sym {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Elf64_Sym {
-    st_name:   Elf64_Word,
-    st_info:   u8,
-    st_other:  u8,
-    st_shndx:  Elf64_Half,
-    st_value:  Elf64_Addr,
-    st_size:   Elf64_Xword,
+    pub st_name:  Elf64_Word,
+    pub st_info:  u8,
+    pub st_other: u8,
+    pub st_shndx: Elf64_Half,
+    pub st_value: Elf64_Addr,
+    pub st_size:  Elf64_Xword,
 }
 unsafe impl ElfStruct for Elf64_Sym {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Elf32_Rel {
-    r_offset:   Elf32_Addr,
-    r_info:     Elf32_Word,
+    pub r_offset: Elf32_Addr,
+    pub r_info:   Elf32_Word,
 }
 unsafe impl ElfStruct for Elf32_Rel {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Elf64_Rel {
-    r_offset:   Elf64_Addr,
-    r_info:     Elf64_Xword,
+    pub r_offset: Elf64_Addr,
+    pub r_info:   Elf64_Xword,
 }
 unsafe impl ElfStruct for Elf64_Rel {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Elf32_Rela {
-    r_offset:   Elf32_Addr,
-    r_info:     Elf32_Word,
-    r_addend:   Elf32_Sword,
+    pub r_offset: Elf32_Addr,
+    pub r_info:   Elf32_Word,
+    pub r_addend: Elf32_Sword,
 }
 unsafe impl ElfStruct for Elf32_Rela {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Elf64_Rela {
-    r_offset:   Elf64_Addr,
-    r_info:     Elf64_Xword,
-    r_addend:   Elf64_Sxword,
+    pub r_offset:   Elf64_Addr,
+    pub r_info:     Elf64_Xword,
+    pub r_addend:   Elf64_Sxword,
 }
 unsafe impl ElfStruct for Elf64_Rela {}
 
