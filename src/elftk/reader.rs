@@ -385,10 +385,35 @@ impl<'a> Reader<'a> {
         SectionHeadersRef::try_from(self.ehdr.construct_from(shdr_data)).unwrap()
     }
 
-    pub fn section_name<'b>(&'b self, _shdr: SectionHeaderRef<'a>) -> &'a [u8] where
+    pub fn section_data<'b>(&'b self, shdr: SectionHeaderRef<'a>) -> &'a [u8] where
         'a: 'b,
     {
-        &[][..]
+        match shdr.sh_type() {
+            SHT_NULL | SHT_NOBITS => &[][..],
+            _ => {
+                let offset = shdr.sh_offset() as usize;
+                let size = shdr.sh_size() as usize;
+                &self.data[offset..offset+size]
+            }
+        }
+    }
+
+    pub fn section_name<'b>(&'b self, shdr: SectionHeaderRef<'a>) -> &'a [u8] where
+        'a: 'b,
+    {
+        // XXX: Use a string table method.
+        self.section_string_table_index()
+            .and_then(|index| {
+                let strtab_shdr = self.section_headers().get(index as usize).unwrap();
+                if strtab_shdr.sh_type() != SHT_STRTAB {
+                    return None;
+                }
+                let data = self.section_data(strtab_shdr);
+                let index = shdr.sh_name() as usize;
+                data.iter().skip(index).position(|&x| x == 0)
+                    .map(|len| &data[index..index+len])
+            })
+            .unwrap_or(&[][..])
         //self.section_string_table_index()
         //    .and_then(|index| StringTableSectionRef::from_section(reader.sections().get(index).unwrap()))
         //    .and_then(|str_table| str_table.get_string(self.sh_name()))
