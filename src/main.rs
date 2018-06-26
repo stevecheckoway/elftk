@@ -1,3 +1,7 @@
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
+
 mod elftk;
 
 use elftk as elf;
@@ -41,20 +45,20 @@ fn section_flags(flags: elf::Elf_Xword) -> ([u8; 15], usize) {
 }
 
 fn print_sections(reader: &elf::Reader) {
-    let sections = reader.sections();
+    let sections = reader.section_headers();
     let offset = reader.header().e_shoff();
     println!("There are {} section headers, starting at offset 0x{:x}:\n", sections.len(), offset);
     println!("Section Headers:");
     println!("  [Nr] {:17} {:15} {:8} {:6} {:6} ES Flg Lk Inf Al",
              "Name", "Type", "Addr", "Off", "Size");
-    for (index, section) in sections.into_iter().enumerate() {
-        let name = str::from_utf8(section.section_name()).unwrap_or("");
-        let (flags, len) = section_flags(section.sh_flags());
+    for (index, shdr) in sections.into_iter().enumerate() {
+        let name = str::from_utf8(reader.section_name(shdr)).unwrap_or("");
+        let (flags, len) = section_flags(shdr.sh_flags());
         let flags = str::from_utf8(&flags[..len]).unwrap();
         println!("  [{:2}] {:17} {:15} {:08x} {:06x} {:06x} {:02x} {:>3} {:>2} {:>3} {:>2}",
-                 index, name, elf::section_type_name(section.sh_type()), section.sh_addr(),
-                 section.sh_offset(), section.sh_size(), section.sh_entsize(), &flags[..len],
-                 section.sh_link(), section.sh_info(), section.sh_addralign());
+                 index, name, elf::section_type_name(shdr.sh_type()), shdr.sh_addr(),
+                 shdr.sh_offset(), shdr.sh_size(), shdr.sh_entsize(), &flags[..len],
+                 shdr.sh_link(), shdr.sh_info(), shdr.sh_addralign());
     }
     println!("Key to Flags:
   W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
@@ -63,11 +67,12 @@ fn print_sections(reader: &elf::Reader) {
   p (processor specific)");
 }
 
-fn main() -> io::Result<()> {
+use failure::Error;
+fn main() -> Result<(), Error> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} input", &args[0]);
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "needs arg"));
+        Err(io::Error::new(io::ErrorKind::InvalidInput, "needs arg"))?;
     }
     let data = fs::read(&args[1])?;
     let reader = elf::Reader::new(&data)?;

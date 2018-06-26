@@ -1,11 +1,10 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
-use std::io;
 use std::mem;
-use std::slice;
 
 use super::constants::*;
+use super::error::*;
 use super::format::*;
 use super::types::*;
 
@@ -13,28 +12,28 @@ macro_rules! field_impl {
     ( $field:ident, u8, u8) => {
         pub fn $field(&self) -> u8 {
             match *self {
-                ElfT::Elf32LE(s, _) => s.$field,
-                ElfT::Elf32BE(s, _) => s.$field,
-                ElfT::Elf64LE(s, _) => s.$field,
-                ElfT::Elf64BE(s, _) => s.$field,
+                ElfT::Elf32LE(s) => s.$field,
+                ElfT::Elf32BE(s) => s.$field,
+                ElfT::Elf64LE(s) => s.$field,
+                ElfT::Elf64BE(s) => s.$field,
             }
         }
     };
     ( $field:ident, $t32:ident, $t64:ident ) => {
         pub fn $field(&self) -> $t64 {
             match *self {
-                ElfT::Elf32LE(s, _) => $t32::from_le(s.$field) as $t64,
-                ElfT::Elf32BE(s, _) => $t32::from_be(s.$field) as $t64,
-                ElfT::Elf64LE(s, _) => $t64::from_le(s.$field),
-                ElfT::Elf64BE(s, _) => $t64::from_be(s.$field),
+                ElfT::Elf32LE(s) => $t32::from_le(s.$field) as $t64,
+                ElfT::Elf32BE(s) => $t32::from_be(s.$field) as $t64,
+                ElfT::Elf64LE(s) => $t64::from_le(s.$field),
+                ElfT::Elf64BE(s) => $t64::from_be(s.$field),
             }
         }
     }
 }
 
-pub type HeaderRef<'a> = ElfRef<'a, Elf32_Ehdr, Elf64_Ehdr, ()>;
+pub type ElfHeaderRef<'a> = ElfRef<'a, Elf32_Ehdr, Elf64_Ehdr>;
 
-impl<'a> HeaderRef<'a> {
+impl<'a> ElfHeaderRef<'a> {
     pub fn e_ident(&self) -> &[u8; EI_NIDENT] {
         self.apply(|hdr| &hdr.e_ident, |hdr| &hdr.e_ident)
     }
@@ -54,10 +53,10 @@ impl<'a> HeaderRef<'a> {
     field_impl!(e_shstrndx,  Elf32_Half, Elf64_Half);
 }
 
-pub type SegmentRef<'a> = ElfRef<'a, Elf32_Phdr, Elf64_Phdr, &'a [u8]>;
-pub type SegmentsRef<'a> = ElfSliceRef<'a, Elf32_Phdr, Elf64_Phdr, &'a [u8]>;
+pub type ProgramHeaderRef<'a> = ElfRef<'a, Elf32_Phdr, Elf64_Phdr>;
+pub type ProgramHeadersRef<'a> = ElfSliceRef<'a, Elf32_Phdr, Elf64_Phdr>;
 
-impl<'a> SegmentRef<'a> {
+impl<'a> ProgramHeaderRef<'a> {
     field_impl!(p_type,   Elf32_Word, Elf64_Word);
     field_impl!(p_offset, Elf32_Off,  Elf64_Off);
     field_impl!(p_vaddr,  Elf32_Addr, Elf64_Addr);
@@ -67,18 +66,20 @@ impl<'a> SegmentRef<'a> {
     field_impl!(p_flags,  Elf32_Word, Elf64_Word);
     field_impl!(p_align,  Elf32_Word, Elf64_Xword);
 
+    /*
     pub fn segment_data(&self) -> &[u8] {
         let offset = self.p_offset() as usize;
         let size = self.p_filesz() as usize;
         let elf_data = self.extra();
         &elf_data[offset..offset+size]
     }
+    */
 }
 
-pub type SectionRef<'a> = ElfRef<'a, Elf32_Shdr, Elf64_Shdr, &'a [u8]>;
-pub type SectionsRef<'a> = ElfSliceRef<'a, Elf32_Shdr, Elf64_Shdr, &'a [u8]>;
+pub type SectionHeaderRef<'a> = ElfRef<'a, Elf32_Shdr, Elf64_Shdr>;
+pub type SectionHeadersRef<'a> = ElfSliceRef<'a, Elf32_Shdr, Elf64_Shdr>;
 
-impl<'a> SectionRef<'a> {
+impl<'a> SectionHeaderRef<'a> {
     field_impl!(sh_name,      Elf32_Word, Elf64_Word);
     field_impl!(sh_type,      Elf32_Word, Elf64_Word);
     field_impl!(sh_flags,     Elf32_Word, Elf64_Xword);
@@ -90,6 +91,7 @@ impl<'a> SectionRef<'a> {
     field_impl!(sh_addralign, Elf32_Word, Elf64_Xword);
     field_impl!(sh_entsize,   Elf32_Word, Elf64_Xword);
 
+    /*
     pub fn section_data<'b>(&'b self) -> &'a[u8] where
         'a: 'b,
     {
@@ -119,51 +121,77 @@ impl<'a> SectionRef<'a> {
             .and_then(|str_table| str_table.get_string(self.sh_name()))
             .unwrap_or(&[][..])
     }
+    */
 }
 
 pub struct Reader<'a> {
     data: &'a [u8],
-}
-
-fn invalid_data<T> (msg: &str) -> io::Result<T> {
-    Err(io::Error::new(io::ErrorKind::InvalidData, msg))
+    ehdr: ElfHeaderRef<'a>,
+    symtab_index: Elf_Word,
+    dynsym_index: Elf_Word,
+    dynamic_index: Elf_Word,
 }
 
 impl<'a> Reader<'a> {
-    pub fn new(data: &'a [u8]) -> io::Result<Reader<'a>> {
+    pub fn new(data: &'a [u8]) -> ElfResult<Reader<'a>> {
         // Check the ELF header.
         if data.len() < mem::size_of::<Elf32_Ehdr>() ||
            &data[0..4] != b"\x7fELF"
         {
-            return invalid_data("Not an ELF file");
-        }
-
-        // ELF class
-        if data[EI_CLASS] != ELFCLASS32 && data[EI_CLASS] != ELFCLASS64 {
-            return invalid_data(&format!("Unknown ELF class {}", data[EI_CLASS]));
-        }
-        if data[EI_CLASS] == ELFCLASS64 && data.len() < mem::size_of::<Elf64_Ehdr>() {
-            return invalid_data("Not an ELF file");
-        }
-
-        // ELF data (endianness)
-        if data[EI_DATA] != ELFDATA2LSB && data[EI_DATA] != ELFDATA2MSB {
-            return invalid_data(&format!("Unknown ELF data (endianness) {}", data[EI_DATA]));
+            return Err(ElfError::NotElfFile);
         }
 
         // ELF version
         if data[EI_VERSION] != EV_CURRENT as u8 {
-            return invalid_data(&format!("Unknown ELF header version {}", data[EI_VERSION]));
+            return Err(ElfError::InvalidHeaderField {
+                header: "ELF",
+                field: "e_ident[EI_VERSION]",
+                value: data[EI_VERSION] as u64,
+            });
         }
 
-        let reader = Reader { data: data };
-        Reader::validate_length(&reader)?;
-        Ok(reader)
-    }
+        // Try to construct the ELF header.
+        let ehdr_data = match (data[EI_CLASS], data[EI_DATA]) {
+            (ELFCLASS32, ELFDATA2LSB) => ElfT::Elf32LE(&data[0..mem::size_of::<Elf32_Ehdr>()]),
+            (ELFCLASS32, ELFDATA2MSB) => ElfT::Elf32BE(&data[0..mem::size_of::<Elf32_Ehdr>()]),
+            (ELFCLASS64, ELFDATA2LSB) => ElfT::Elf64LE(&data[0..mem::size_of::<Elf64_Ehdr>()]),
+            (ELFCLASS64, ELFDATA2MSB) => ElfT::Elf64BE(&data[0..mem::size_of::<Elf64_Ehdr>()]),
+            (ELFCLASS32, x) | (ELFCLASS64, x) => {
+                return Err(ElfError::InvalidHeaderField {
+                    header: "ELF",
+                    field: "e_ident[EI_DATA]",
+                    value: x as u64,
+                });
+            },
+            (x, ELFDATA2LSB) | (x, ELFDATA2MSB) => {
+                return Err(ElfError::InvalidHeaderField {
+                    header: "ELF",
+                    field: "e_ident[EI_CLASS]",
+                    value: x as u64,
+                });
+            },
+            _ => unreachable!(),
+        };
+        let ehdr = ElfHeaderRef::try_from(ehdr_data)?;
 
-    fn validate_length(reader: &Reader<'a>) -> io::Result<()> {
-        let hdr = reader.header();
-        let len = reader.data.len() as u64;
+        if ehdr.e_version() != EV_CURRENT {
+            return Err(ElfError::InvalidHeaderField {
+                header: "ELF",
+                field: "e_version",
+                value: ehdr.e_version() as u64,
+            });
+        }
+
+        let mut reader = Reader {
+            data: data,
+            ehdr: ehdr,
+            symtab_index: SHN_UNDEF as Elf_Word,
+            dynsym_index: SHN_UNDEF as Elf_Word,
+            dynamic_index: SHN_UNDEF as Elf_Word,
+        };
+
+        // Check the program and section headers.
+        let len = data.len() as u64;
         let is_64bit = reader.is_64bit();
 
         let array_in_bounds = move |offset: u64, size: u64, num: u64| -> bool {
@@ -172,75 +200,123 @@ impl<'a> Reader<'a> {
                 .map_or(false, move |end| end <= len)
         };
 
-        if len < hdr.e_entry() {
-            return invalid_data("File too small for entry point");
+        if len < reader.ehdr.e_entry() {
+            return Err(ElfError::NotContainedInFile {
+                what: "ELF header field e_entry",
+                which: reader.ehdr.e_entry(),
+            });
         }
 
         // Check the program headers, if any.
-        let phoff = hdr.e_phoff();
+        let phoff = reader.ehdr.e_phoff();
         if phoff > 0 {
-            let size = hdr.e_phentsize() as u64;
-            let num = hdr.e_phnum() as u64;
+            let size = reader.ehdr.e_phentsize() as u64;
+            let num = reader.ehdr.e_phnum() as u64;
             if !array_in_bounds(phoff, size, num) {
-                return invalid_data("File too small for program headers");
+                return Err(ElfError::NotContainedInFile { what: "program headers", which: phoff });
             }
             if (is_64bit && size as usize != mem::size_of::<Elf64_Phdr>()) ||
                (!is_64bit && size as usize != mem::size_of::<Elf32_Phdr>())
             {
-                return invalid_data(&format!("Unexpected program header size {} for {}-bit ELF",
-                                             size, { if is_64bit { "64" } else { "32" } }));
+                return Err(ElfError::InvalidHeaderField {
+                    header: "ELF",
+                    field: "e_phentsize",
+                    value: size,
+                });
             }
             // Check that the segments are contained in the file
-            for (index, segment) in reader.segments().into_iter().enumerate() {
-                if !array_in_bounds(segment.p_offset(), segment.p_filesz(), 1) {
-                    return invalid_data(&format!("Segment {} not contained within file", index));
+            for (index, phdr) in reader.program_headers().into_iter().enumerate() {
+                if !array_in_bounds(phdr.p_offset(), phdr.p_filesz(), 1) {
+                    return Err(ElfError::NotContainedInFile { what: "segment", which: index as u64});
                 }
             }
 
         }
-        let shoff = hdr.e_shoff();
+        let shoff = reader.ehdr.e_shoff();
         if shoff > 0 {
-            let size = hdr.e_shentsize() as u64;
-            let shnum = hdr.e_shnum();
-            let shstrndx = hdr.e_shstrndx();
+            let size = reader.ehdr.e_shentsize() as u64;
+            let shnum = reader.ehdr.e_shnum();
+            let shstrndx = reader.ehdr.e_shstrndx();
 
             if shnum >= SHN_LORESERVE {
-                return invalid_data(&format!("ELF header member e_shnum = {} is invalid", shnum));
+                return Err(ElfError::InvalidHeaderField {
+                    header:"ELF",
+                    field: "e_shnum",
+                    value: shnum as u64,
+                });
             }
             if shstrndx >= SHN_LORESERVE && shstrndx != SHN_XINDEX {
-                return invalid_data(&format!("ELF header member e_shstrndx = {} is invalid", shstrndx));
+                return Err(ElfError::InvalidHeaderField {
+                    header:"ELF",
+                    field: "e_shstrndx",
+                    value: shstrndx as u64,
+                });
             }
 
             // If e_shnum == 0 (resp. e_shstrndx == SHN_XINDEX), then there must be at least one
             // section header in the table whose st_size (resp. st_link) member holds the real
             // number of sections (resp. index of the section string table).
             if (shnum == 0 || shstrndx == SHN_XINDEX) && !array_in_bounds(shoff, size, 1) {
-                return invalid_data("File too small for section headers");
+                return Err(ElfError::NotContainedInFile { what: "section headers", which: shoff });
             }
-            let num = reader.num_sections() as u64;
-            if !array_in_bounds(shoff, size, num) {
-                return invalid_data("File too small for section headers");
+            let num = reader.num_sections();
+            if !array_in_bounds(shoff, size, num as u64) {
+                return Err(ElfError::NotContainedInFile { what: "section headers", which: shoff+size*num as u64 });
             }
 
             if (is_64bit && size as usize != mem::size_of::<Elf64_Shdr>()) ||
                (!is_64bit && size as usize != mem::size_of::<Elf32_Shdr>())
             {
-                return invalid_data(&format!("Unexpected section header size {} for {}-bit ELF",
-                                             size, { if is_64bit { "64" } else { "32" } }));
+                return Err(ElfError::InvalidHeaderField {
+                    header: "ELF",
+                    field: "e_shentsize",
+                    value: size,
+                });
             }
 
             // Check that the sections are contained in the file.
-            let sections = reader.sections();
-            for (index, section) in sections.iter().enumerate() {
-                let section_type = section.sh_type();
+            let sections = reader.section_headers();
+            for (index, shdr) in sections.iter().enumerate() {
+                let section_type = shdr.sh_type();
                 if section_type != SHT_NOBITS && section_type != SHT_NULL &&
-                   !array_in_bounds(section.sh_offset(), section.sh_size(), 1)
+                   !array_in_bounds(shdr.sh_offset(), shdr.sh_size(), 1)
                 {
-                    return invalid_data(&format!("Section {} not contained within file", index));
+                    return Err(ElfError::NotContainedInFile { what: "section", which: index as u64 });
+                }
+                if shdr.sh_link() >= num {
+                    return Err(ElfError::InvalidHeaderField {
+                        header: "section",
+                        field: "sh_link",
+                        value: shdr.sh_link() as u64,
+                    });
+                }
+                if shdr.sh_flags() & SHF_INFO_LINK != 0 && shdr.sh_info() >= num {
+                    return Err(ElfError::InvalidHeaderField {
+                        header: "section",
+                        field: "sh_info",
+                        value: shdr.sh_info() as u64,
+                    });
+                }
+
+                let index = index as Elf_Word;
+                match section_type {
+                    SHT_SYMTAB => {
+                        if reader.symtab_index != SHN_UNDEF as Elf_Word {
+                            return Err(ElfError::MultipleSections { section: "SYMTAB" });
+                        }
+                        reader.symtab_index = index;
+                    },
+                    SHT_DYNSYM => {
+                        if reader.dynsym_index != SHN_UNDEF as Elf_Word {
+                            return Err(ElfError::MultipleSections { section: "DYNSYM" });
+                        }
+                        reader.dynsym_index = index;
+                    },
+                    _ => {},
                 }
             }
         }
-        Ok(())
+        Ok(reader)
     }
 
     pub fn little_endian(&self) -> bool {
@@ -251,102 +327,77 @@ impl<'a> Reader<'a> {
         self.data[EI_CLASS] == ELFCLASS64
     }
 
-    fn file_format_with_extra<E>(&self, extra: E) -> ElfT<(), (), E> {
-        match (self.is_64bit(), self.little_endian()) {
-            (false, true)  => ElfT::Elf32LE((), extra),
-            (false, false) => ElfT::Elf32BE((), extra),
-            (true, true)   => ElfT::Elf64LE((), extra),
-            (true, false)  => ElfT::Elf64BE((), extra),
-        }
+    pub fn header(&self) -> ElfHeaderRef<'a> {
+        self.ehdr.clone()
     }
 
-    pub fn file_format(&self) -> ElfFormat {
-        self.file_format_with_extra(())
-    }
-
-    fn slice_ref<T32, T64, E>(&self, offset: usize, num: usize, extra: E) -> ElfSliceRef<'a, T32, T64, E> where
-        T32: 'a,
-        T64: 'a,
-        E: 'a,
-    {
-        let size = if self.is_64bit() { mem::size_of::<T64>() } else { mem::size_of::<T32>() };
-        let end = offset + num * size;
-        assert!(end <= self.data.len());
-        let ptr = &self.data[offset] as *const u8;
-        self.file_format_with_extra(extra)
-            .map(move |_| unsafe { slice::from_raw_parts(ptr as *const T32, num) },
-                 move |_| unsafe { slice::from_raw_parts(ptr as *const T64, num) })
-    }
-
-    pub fn header(&self) -> HeaderRef<'a> {
-        let ptr = self.data.as_ptr();
-        
-        self.file_format().map(
-            move |_| unsafe { &*(ptr as *const Elf32_Ehdr) },
-            move |_| unsafe { &*(ptr as *const Elf64_Ehdr) })
-    }
-
-    pub fn segments(&self) -> SegmentsRef<'a> {
-        let ehdr = self.header();
-        let phoff = ehdr.e_phoff() as usize;
-        let phentsize = ehdr.e_phentsize() as usize;
-        let phnum = if phoff == 0 { 0 } else { ehdr.e_phnum() as usize };
+    pub fn program_headers(&self) -> ProgramHeadersRef<'a> {
+        let phoff = self.ehdr.e_phoff() as usize;
+        let phentsize = self.ehdr.e_phentsize() as usize;
+        let phnum = if phoff == 0 { 0 } else { self.ehdr.e_phnum() as usize };
         let len = phentsize * phnum;
         let phdr_data = &self.data[phoff..phoff+len];
-        SegmentsRef::try_from(ehdr.construct_from(phdr_data, self.data)).unwrap()
+        ProgramHeadersRef::try_from(self.ehdr.construct_from(phdr_data)).unwrap()
     }
 
     // The ELF file MUST have sections if this file is called.
-    fn section_0(&self) -> SectionRef<'a> {
-        let ehdr = self.header();
-        let shoff = ehdr.e_shoff() as usize;
-        let shentsize = ehdr.e_shentsize() as usize;
+    fn section_0(&self) -> SectionHeaderRef<'a> {
+        let shoff = self.ehdr.e_shoff() as usize;
+        let shentsize = self.ehdr.e_shentsize() as usize;
         debug_assert!(shoff > 0);
         let shdr_data = &self.data[shoff..shoff+shentsize];
-        SectionRef::try_from(ehdr.construct_from(shdr_data, self.data)).unwrap()
+        SectionHeaderRef::try_from(self.ehdr.construct_from(shdr_data)).unwrap()
     }
 
-    pub fn num_sections(&self) -> usize {
+    pub fn num_sections(&self) -> Elf_Word {
         // If e_shoff > 0 and e_shnum() == 0, then section 0's st_size member holds the actual
         // number of sections.
-        let ehdr = self.header();
-        let shoff = ehdr.e_shoff();
+        let shoff = self.ehdr.e_shoff();
         if shoff == 0 {
             return 0;
         }
-        let shnum = ehdr.e_shnum();
+        let shnum = self.ehdr.e_shnum();
         if shnum > 0 {
-            shnum as usize
+            shnum as Elf_Word
         } else {
-            self.section_0().sh_size() as usize
+            self.section_0().sh_size() as Elf_Word
         }
     }
 
-    pub fn section_string_table_index(&self) -> Option<usize> {
-        let ehdr = self.header();
-        let shstrndx = ehdr.e_shstrndx();
+    pub fn section_string_table_index(&self) -> Option<Elf_Word> {
+        let shstrndx = self.ehdr.e_shstrndx();
         if shstrndx == SHN_UNDEF {
             return None;
         }
         if shstrndx == SHN_XINDEX {
-            Some(self.section_0().sh_link() as usize)
+            Some(self.section_0().sh_link())
         } else {
-            Some(shstrndx as usize)
+            Some(shstrndx as Elf_Word)
         }
     }
 
-    pub fn sections(&self) -> SectionsRef<'a> {
-        let ehdr = self.header();
-        let shoff = ehdr.e_shoff() as usize;
-        let shentsize = ehdr.e_shentsize() as usize;
-        let shnum = self.num_sections();
+    pub fn section_headers(&self) -> SectionHeadersRef<'a> {
+        let shoff = self.ehdr.e_shoff() as usize;
+        let shentsize = self.ehdr.e_shentsize() as usize;
+        let shnum = self.num_sections() as usize;
         let len = shentsize * shnum;
         let shdr_data = &self.data[shoff..shoff+len];
-        SectionsRef::try_from(ehdr.construct_from(shdr_data, self.data)).unwrap()
+        SectionHeadersRef::try_from(self.ehdr.construct_from(shdr_data)).unwrap()
+    }
+
+    pub fn section_name<'b>(&'b self, _shdr: SectionHeaderRef<'a>) -> &'a [u8] where
+        'a: 'b,
+    {
+        &[][..]
+        //self.section_string_table_index()
+        //    .and_then(|index| StringTableSectionRef::from_section(reader.sections().get(index).unwrap()))
+        //    .and_then(|str_table| str_table.get_string(self.sh_name()))
+        //    .unwrap_or(&[][..])
     }
 }
 
 
+/*
 macro_rules! facade {
     { $($name:ident : $t64:ty),* } => {
         $( #[inline] pub fn $name(&self) -> $t64 { (self.0).$name() } )*
@@ -422,3 +473,4 @@ impl<'a> SymbolTableEntryRef<'a> {
 
 impl<'a> SymbolTableSectionRef<'a> {
 }
+*/
