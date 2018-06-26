@@ -1,8 +1,16 @@
 [package]
-name = "elf32to64"
-version = "0.1.0"
+name = "elftk"
+version = "0.0.1"
 authors = ["Stephen Checkoway <s@pahtak.org>"]
 
 [dependencies]
 failure = "^0.1.1"
 failure_derive = "^0.1.1"
+
+[lib]
+name = "elftk"
+path = "src/elftk/lib.rs"
+
+[[bin]]
+name = "readelf-lite"
+path = "src/readelf.rs"

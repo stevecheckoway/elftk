@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::{Elf32_Word, Elf64_Xword};
 
 // i386
