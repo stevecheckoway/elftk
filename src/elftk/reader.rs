@@ -8,9 +8,9 @@ use super::error::*;
 use super::format::*;
 use super::types::*;
 
-macro_rules! field_impl {
-    ( $field:ident, u8, u8) => {
-        pub fn $field(&self) -> u8 {
+macro_rules! noswap_field_impl {
+    ( $field:ident, $type:ty ) => {
+        pub fn $field(&self) -> $type {
             match *self {
                 ElfT::Elf32LE(s) => s.$field,
                 ElfT::Elf32BE(s) => s.$field,
@@ -18,7 +18,9 @@ macro_rules! field_impl {
                 ElfT::Elf64BE(s) => s.$field,
             }
         }
-    };
+    }
+}
+macro_rules! field_impl {
     ( $field:ident, $t32:ident, $t64:ident ) => {
         pub fn $field(&self) -> $t64 {
             match *self {
@@ -34,10 +36,10 @@ macro_rules! field_impl {
 pub type ElfHeaderRef<'a> = ElfRef<'a, Elf32_Ehdr, Elf64_Ehdr>;
 
 impl<'a> ElfHeaderRef<'a> {
-    pub fn e_ident(&self) -> &[u8; EI_NIDENT] {
-        self.apply(|hdr| &hdr.e_ident, |hdr| &hdr.e_ident)
-    }
-
+    //pub fn e_ident(&self) -> &[u8; EI_NIDENT] {
+    //    self.apply(|hdr| &hdr.e_ident, |hdr| &hdr.e_ident)
+    //}
+    noswap_field_impl!(e_ident, [u8; EI_NIDENT]);
     field_impl!(e_type,      Elf32_Half, Elf64_Half);
     field_impl!(e_machine,   Elf32_Half, Elf64_Half);
     field_impl!(e_version,   Elf32_Word, Elf64_Word);
@@ -65,15 +67,6 @@ impl<'a> ProgramHeaderRef<'a> {
     field_impl!(p_memsz,  Elf32_Word, Elf64_Xword);
     field_impl!(p_flags,  Elf32_Word, Elf64_Word);
     field_impl!(p_align,  Elf32_Word, Elf64_Xword);
-
-    /*
-    pub fn segment_data(&self) -> &[u8] {
-        let offset = self.p_offset() as usize;
-        let size = self.p_filesz() as usize;
-        let elf_data = self.extra();
-        &elf_data[offset..offset+size]
-    }
-    */
 }
 
 pub type SectionHeaderRef<'a> = ElfRef<'a, Elf32_Shdr, Elf64_Shdr>;
@@ -90,38 +83,6 @@ impl<'a> SectionHeaderRef<'a> {
     field_impl!(sh_info,      Elf32_Word, Elf64_Word);
     field_impl!(sh_addralign, Elf32_Word, Elf64_Xword);
     field_impl!(sh_entsize,   Elf32_Word, Elf64_Xword);
-
-    /*
-    pub fn section_data<'b>(&'b self) -> &'a[u8] where
-        'a: 'b,
-    {
-        let section_type = self.sh_type();
-        if section_type == SHT_NULL || section_type == SHT_NOBITS {
-            return &[][..];
-        }
-        let offset = self.sh_offset() as usize;
-        let size = self.sh_size() as usize;
-        let elf_data = self.extra();
-        &elf_data[offset..offset+size]
-    }
-
-    #[inline]
-    fn reader<'b>(&'b self) -> Reader<'a> where
-        'a: 'b,
-    {
-        Reader { data: self.extra() }
-    }
-
-    pub fn section_name<'b>(&'b self) -> &'a [u8] where
-        'a: 'b,
-    {
-        let reader = self.reader();
-        reader.section_string_table_index()
-            .and_then(|index| StringTableSectionRef::from_section(reader.sections().get(index).unwrap()))
-            .and_then(|str_table| str_table.get_string(self.sh_name()))
-            .unwrap_or(&[][..])
-    }
-    */
 }
 
 pub struct Reader<'a> {
@@ -338,6 +299,15 @@ impl<'a> Reader<'a> {
         let len = phentsize * phnum;
         let phdr_data = &self.data[phoff..phoff+len];
         ProgramHeadersRef::try_from(self.ehdr.construct_from(phdr_data)).unwrap()
+    }
+
+    pub fn segment_data(&self, phdr: ProgramHeaderRef<'a>) -> &'a [u8] {
+        if phdr.p_type() == PT_NULL {
+            return &[][..];
+        }
+        let offset = phdr.p_offset() as usize;
+        let size = phdr.p_filesz() as usize;
+        &self.data[offset..offset+size]
     }
 
     // The ELF file MUST have sections if this file is called.
