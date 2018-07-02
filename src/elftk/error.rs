@@ -1,3 +1,5 @@
+use super::Elf_Word;
+
 #[derive(Debug, Fail)]
 pub enum ElfError {
     #[fail(display = "not an ELF file")]
@@ -23,6 +25,12 @@ pub enum ElfError {
 
     #[fail(display = "multiple {} sections", section)]
     MultipleSections { section: &'static str },
+
+    #[fail(display = "invalid linked section={}", linked)]
+    InvalidLinkedSection { linked: Elf_Word },
+
+    #[fail(display = "invalid section type: expected={}, actual={}", expected, actual)]
+    InvalidSectionType { expected: Elf_Word, actual: Elf_Word },
 
     #[fail(display = "{}", msg)]
     Msg { msg: &'static str },
