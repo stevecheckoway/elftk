@@ -1,44 +1,17 @@
 extern crate elftk;
 extern crate failure;
 
-use elftk as elf;
+mod names;
 
 use std::fs;
 use std::io;
 use std::str;
 
-fn section_flags(flags: elf::Elf_Xword) -> ([u8; 15], usize) {
-    let mut s = [b' '; 15];
-    let mut idx = 0;
-    let mut checked = 0;
-    {
-        let mut check_flag = |f, c| {
-            if flags & f & !checked != 0 {
-                s[idx] = c;
-                idx += 1;
-            }
-            checked |= f;
-        };
-        check_flag(elf::SHF_WRITE,            b'W');
-        check_flag(elf::SHF_ALLOC,            b'A');
-        check_flag(elf::SHF_EXECINSTR,        b'X');
-        check_flag(elf::SHF_MERGE,            b'M');
-        check_flag(elf::SHF_STRINGS,          b'S');
-        check_flag(elf::SHF_INFO_LINK,        b'I');
-        check_flag(elf::SHF_LINK_ORDER,       b'L');
-        check_flag(elf::SHF_OS_NONCONFORMING, b'O');
-        check_flag(elf::SHF_GROUP,            b'G');
-        check_flag(elf::SHF_TLS,              b'T');
-        check_flag(elf::SHF_COMPRESSED,       b'C');
-        check_flag(elf::SHF_MASKOS,           b'o');
-        check_flag(elf::SHF_EXCLUDED,         b'E');
-        check_flag(elf::SHF_MASKPROC,         b'p');
-    }
-    if flags & !checked != 0 {
-        s[idx] = b'x';
-        idx += 1;
-    }
-    (s, idx)
+use elftk as elf;
+use names::*;
+
+fn to_utf8(s: &[u8]) -> &str {
+    str::from_utf8(s).unwrap_or("<invalid>")
 }
 
 fn print_sections(reader: &elf::Reader) {
@@ -49,7 +22,7 @@ fn print_sections(reader: &elf::Reader) {
     println!("  [Nr] {:17} {:15} {:8} {:6} {:6} ES Flg Lk Inf Al",
              "Name", "Type", "Addr", "Off", "Size");
     for (index, shdr) in sections.into_iter().enumerate() {
-        let name = str::from_utf8(reader.section_name(shdr)).unwrap_or("");
+        let name = to_utf8(reader.section_name(shdr));
         let (flags, len) = section_flags(shdr.sh_flags());
         let flags = str::from_utf8(&flags[..len]).unwrap();
         println!("  [{:2}] {:17} {:15} {:08x} {:06x} {:06x} {:02x} {:>3} {:>2} {:>3} {:>2}",
@@ -64,6 +37,28 @@ fn print_sections(reader: &elf::Reader) {
   p (processor specific)");
 }
 
+fn print_symbols(reader: &elf::Reader) -> Result<(), Error> {
+    let symtab_section = if let Some(s) = reader.symtab()? {
+        s
+    } else {
+        return Ok(());
+    };
+    let symtab = if let elf::SectionDataRef::SymbolTable(s) = symtab_section.data { s } else { unreachable!() };
+    let section_name = symtab_section.name.map_or("", to_utf8);
+    println!("\nSymbol table '{}' contains {} entries:", section_name, symtab.len());
+    println!("   Num:    Value  Size Type    Bind   Vis      Ndx Name");
+    for i in 0 .. symtab.len() {
+        let symbol = symtab.get(i)?;
+        let name = symbol.symbol_name.map_or("", to_utf8);
+        println!("{:6}: {:08x} {:5} {:<7} {:<6} {:<6} {:>3} {}",
+                 i, symbol.value, symbol.size,
+                 symbol_type(symbol.symbol_type()), symbol_binding(symbol.binding()),
+                 symbol_visibility(symbol.visibility()), symbol_index(symbol.section), name);
+    }
+
+    Ok(())
+}
+
 use failure::Error;
 fn main() -> Result<(), Error> {
     let args: Vec<String> = std::env::args().collect();
@@ -74,5 +69,6 @@ fn main() -> Result<(), Error> {
     let data = fs::read(&args[1])?;
     let reader = elf::Reader::new(&data)?;
     print_sections(&reader);
+    print_symbols(&reader)?;
     Ok(())
 }

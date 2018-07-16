@@ -439,6 +439,21 @@ impl<'a> Reader<'a> {
         })
     }
 
+    pub fn symtab(&self) -> ElfResult<Option<SectionRef<'a>>> {
+        if self.symtab_index == SHN_UNDEF as Elf_Word {
+            return Ok(None);
+        }
+        let shdr = self.section_headers().get(self.symtab_index as usize)?;
+        Ok(Some(self.get_section(shdr)?))
+    }
+
+    pub fn dynsym(&self) -> ElfResult<Option<SectionRef<'a>>> {
+        if self.dynsym_index == SHN_UNDEF as Elf_Word {
+            return Ok(None);
+        }
+        let shdr = self.section_headers().get(self.dynsym_index as usize)?;
+        Ok(Some(self.get_section(shdr)?))
+    }
 }
 
 pub struct StringTableRef<'a> {
@@ -469,10 +484,16 @@ impl<'a> SymbolTableEntryRef<'a> {
     field_impl!(st_shndx, Elf32_Half, Elf64_Half);
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SectionIndex {
+    Normal(Elf_Word),
+    Reserved(Elf_Half),
+}
+
 pub struct SymbolRef<'a> {
     pub symbol_name: Option<&'a [u8]>,
     pub section_name: Option<&'a [u8]>,
-    pub section: Option<Elf_Word>,
+    pub section: SectionIndex,
     pub value: Elf64_Addr,
     pub size: Elf64_Xword,
     pub info: u8,
@@ -527,19 +548,22 @@ impl<'a> SymbolTableRef<'a> {
         let shndx = entry.st_shndx();
         let section;
         if shndx < SHN_LORESERVE {
-            section = Some(shndx as Elf_Word);
+            section = SectionIndex::Normal(shndx as Elf_Word);
         } else if shndx == SHN_XINDEX {
             if let Some(shndx) = self.shndx {
-                section = Some(shndx.get(index)?.value());
+                section = SectionIndex::Normal(shndx.get(index)?.value());
             } else {
                 return Err(ElfError::Msg { msg: "No associated SYMTAB_SHNDX section for symbol" });
             }
         } else {
-            section = None;
+            section = SectionIndex::Reserved(shndx);
         }
-        let section_name = section
-            .and_then(|section| self.section_names.as_ref()
-            .and_then(|names| names.get_string(section)));
+        let section_name = if let SectionIndex::Normal(s) = section {
+            self.section_names.as_ref()
+                .and_then(|names| names.get_string(s))
+        } else {
+            None
+        };
         let symbol_name = self.symbol_names.get_string(entry.st_name());
         Ok(SymbolRef {
             symbol_name: symbol_name,
