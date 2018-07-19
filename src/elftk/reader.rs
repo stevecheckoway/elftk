@@ -36,9 +36,6 @@ macro_rules! field_impl {
 pub type ElfHeaderRef<'a> = ElfRef<'a, Elf32_Ehdr, Elf64_Ehdr>;
 
 impl<'a> ElfHeaderRef<'a> {
-    //pub fn e_ident(&self) -> &[u8; EI_NIDENT] {
-    //    self.apply(|hdr| &hdr.e_ident, |hdr| &hdr.e_ident)
-    //}
     noswap_field_impl!(e_ident, [u8; EI_NIDENT]);
     field_impl!(e_type,      Elf32_Half, Elf64_Half);
     field_impl!(e_machine,   Elf32_Half, Elf64_Half);
@@ -347,21 +344,18 @@ impl<'a> Reader<'a> {
     }
 
     fn section_string_table(&self) -> ElfResult<Option<StringTableRef<'a>>> {
-        if let Some(shstrndx) = self.section_string_table_index() {
-            let shstr_shdr = self.section_headers().get(shstrndx as usize)?;
-            if shstr_shdr.sh_type() != SHT_STRTAB {
-                return Err(ElfError::InvalidSectionType { expected: SHT_STRTAB, actual: shstr_shdr.sh_type() });
-            }
-            if let SectionDataRef::StringTable(strtab) = self.section_data(shstr_shdr)? {
-                Ok(Some(strtab))
-            } else {
-                unreachable!()
-            }
-        } else {
-            Ok(None)
-        }
+        self.section_string_table_index()
+            .map_or(Ok(None), |shstrndx| {
+                let shstr_shdr = self.section_headers().get(shstrndx as usize)?;
+                if shstr_shdr.sh_type() != SHT_STRTAB {
+                    return Err(ElfError::InvalidSectionType { expected: SHT_STRTAB, actual: shstr_shdr.sh_type() });
+                }
+                match self.section_data(shstr_shdr)? {
+                    SectionDataRef::StringTable(strtab) => Ok(Some(strtab)),
+                    _                                   => unreachable!(),
+                }
+            })
     }
-
     pub fn section_headers(&self) -> SectionHeadersRef<'a> {
         let shoff = self.ehdr.e_shoff() as usize;
         let shentsize = self.ehdr.e_shentsize() as usize;
@@ -393,36 +387,55 @@ impl<'a> Reader<'a> {
         }
     }
 
+    fn linked_string_table(&self, index: Elf_Word) -> ElfResult<StringTableRef<'a>> {
+        let data = self.section_headers().get(index as usize)
+            .and_then(|shdr| self.section_data(shdr))
+            .map_err(|_| ElfError::InvalidLinkedSection { linked: index })?;
+        if let SectionDataRef::StringTable(strtab) = data {
+            Ok(strtab)
+        } else {
+            Err(ElfError::InvalidLinkedSection { linked: index })
+        }
+    }
+
+    fn linked_symbol_table(&self, index: Elf_Word) -> ElfResult<SymbolTableRef<'a>> {
+        let data = self.section_headers().get(index as usize)
+            .and_then(|shdr| self.section_data(shdr))
+            .map_err(|_| ElfError::InvalidLinkedSection { linked: index })?;
+        if let SectionDataRef::SymbolTable(symtab) = data {
+            Ok(symtab)
+        } else {
+            Err(ElfError::InvalidLinkedSection { linked: index })
+        }
+    }
+
     fn section_data(&self, shdr: SectionHeaderRef<'a>) -> ElfResult<SectionDataRef<'a>> {
         let data = if let SectionDataRef::Uninterpreted(data) = self.uninterpreted_section_data(shdr) {
             data
         } else {
             return Ok(SectionDataRef::NoBits);
         };
-        let section_headers = self.section_headers();
         Ok(match shdr.sh_type() {
             SHT_NULL | SHT_NOBITS   => unreachable!(),
             SHT_STRTAB              => SectionDataRef::StringTable(StringTableRef { data: data }),
             SHT_SYMTAB | SHT_DYNSYM => {
-                let section_names = self.section_string_table()?;
-                let symbol_names_shdr = section_headers.get(shdr.sh_link() as usize)
-                    .map_err(|_| ElfError::InvalidLinkedSection { linked: shdr.sh_link() })?;
-                if symbol_names_shdr.sh_type() != SHT_STRTAB {
-                    return Err(ElfError::InvalidLinkedSection { linked: shdr.sh_link() });
-                }
-                let symbol_names = match self.section_data(symbol_names_shdr)? {
-                    SectionDataRef::StringTable(strtab) => strtab,
-                    _                                   => unreachable!(),
-                };
+                let symbol_names = self.linked_string_table(shdr.sh_link())?;
                 let entries = SymbolTableEntriesRef::try_from(shdr.construct_from(data))?;
                 let shndx = None; // TODO: 
                 SectionDataRef::SymbolTable(SymbolTableRef {
-                    section_names: section_names,
                     symbol_names: symbol_names,
                     entries: entries,
                     shndx: shndx,
                 })
             },
+            SHT_REL => SectionDataRef::RelocationTable(RelTableRef {
+                    symbol_table: self.linked_symbol_table(shdr.sh_link())?,
+                    entries: RelTableEntriesRef::try_from(shdr.construct_from(data))?,
+                }),
+            SHT_RELA => SectionDataRef::ExplicitRelocationTable(RelaTableRef {
+                    symbol_table: self.linked_symbol_table(shdr.sh_link())?,
+                    entries: RelaTableEntriesRef::try_from(shdr.construct_from(data))?,
+                }),
             // TODO: Fill in the rest.
             _ => SectionDataRef::Uninterpreted(data),
         })
@@ -492,7 +505,6 @@ pub enum SectionIndex {
 
 pub struct SymbolRef<'a> {
     pub symbol_name: Option<&'a [u8]>,
-    pub section_name: Option<&'a [u8]>,
     pub section: SectionIndex,
     pub value: Elf64_Addr,
     pub size: Elf64_Xword,
@@ -530,7 +542,6 @@ impl<'a> ElfWordRef<'a> {
 
 
 pub struct SymbolTableRef<'a> {
-    section_names: Option<StringTableRef<'a>>,
     symbol_names: StringTableRef<'a>,
     entries: SymbolTableEntriesRef<'a>,
     shndx: Option<ElfSliceRef<'a, Elf_Word, Elf_Word>>,
@@ -558,16 +569,9 @@ impl<'a> SymbolTableRef<'a> {
         } else {
             section = SectionIndex::Reserved(shndx);
         }
-        let section_name = if let SectionIndex::Normal(s) = section {
-            self.section_names.as_ref()
-                .and_then(|names| names.get_string(s))
-        } else {
-            None
-        };
         let symbol_name = self.symbol_names.get_string(entry.st_name());
         Ok(SymbolRef {
             symbol_name: symbol_name,
-            section_name: section_name,
             section: section,
             value: entry.st_value(),
             size: entry.st_size(),
@@ -577,12 +581,50 @@ impl<'a> SymbolTableRef<'a> {
     }
 }
 
-pub struct RelTableRef<'a> {
-    symbol_table: SymbolTableRef<'a>,
-    relocated_section: &'a [u8],
+pub type RelTableEntryRef<'a> = ElfRef<'a, Elf32_Rel, Elf64_Rel>;
+pub type RelTableEntriesRef<'a> = ElfSliceRef<'a, Elf32_Rel, Elf64_Rel>;
+pub type RelaTableEntryRef<'a> = ElfRef<'a, Elf32_Rela, Elf64_Rela>;
+pub type RelaTableEntriesRef<'a> = ElfSliceRef<'a, Elf32_Rela, Elf64_Rela>;
+
+impl<'a> RelTableEntryRef<'a> {
+    field_impl!(r_offset, Elf32_Addr, Elf64_Addr);
+    field_impl!(r_info,   Elf32_Word, Elf64_Xword);
+
+    pub fn symbol_index(&self) -> Elf_Word {
+        let info = self.r_info();
+        self.apply(|_| info >> 8, |_| info >> 32) as Elf_Word
+    }
+
+    pub fn relocation_type(&self) -> Elf_Word {
+        let info = self.r_info();
+        self.apply(|_| info & 0xff, |_| info & 0xffffffff) as Elf_Word
+    }
 }
 
-impl<'a> RelTableRef<'a> {
+impl<'a> RelaTableEntryRef<'a> {
+    field_impl!(r_offset, Elf32_Addr,  Elf64_Addr);
+    field_impl!(r_info,   Elf32_Word,  Elf64_Xword);
+    field_impl!(r_addend, Elf32_Sword, Elf64_Sxword);
+
+    pub fn symbol_index(&self) -> Elf_Word {
+        let info = self.r_info();
+        self.apply(|_| info >> 8, |_| info >> 32) as Elf_Word
+    }
+
+    pub fn relocation_type(&self) -> Elf_Word {
+        let info = self.r_info();
+        self.apply(|_| info & 0xff, |_| info & 0xffffffff) as Elf_Word
+    }
+}
+
+pub struct RelTableRef<'a> {
+    pub symbol_table: SymbolTableRef<'a>,
+    pub entries: RelTableEntriesRef<'a>
+}
+
+pub struct RelaTableRef<'a> {
+    pub symbol_table: SymbolTableRef<'a>,
+    pub entries: RelaTableEntriesRef<'a>,
 }
 
 pub enum SectionDataRef<'a> {
@@ -591,6 +633,12 @@ pub enum SectionDataRef<'a> {
 
     /// Section holds a symbol table.
     SymbolTable(SymbolTableRef<'a>),
+
+    /// Section holds a relocation table with implicit addends (Rel).
+    RelocationTable(RelTableRef<'a>),
+
+    /// Section holds a relocation table with explicit addends (Rela).
+    ExplicitRelocationTable(RelaTableRef<'a>),
 
     /// Section holds a slice of Elf_Words.
     ElfWords(ElfWordsRef<'a>),

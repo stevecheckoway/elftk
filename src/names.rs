@@ -80,4 +80,95 @@ pub fn symbol_index(index: elf::SectionIndex) -> String {
     }
 }
 
-
+pub fn relocation_name(machine: elf::Elf_Half, relocation_type: elf::Elf_Word) -> &'static str {
+    macro_rules! rnames {
+        { $($x:ident),+ } => {
+            match relocation_type {
+                $(
+                    elf::$x => stringify!($x)
+                ),+,
+                _ => "<unknown>",
+            }
+        }
+    }
+    match machine {
+        elf::EM_386 => rnames! {
+            R_386_NONE,
+            R_386_32,
+            R_386_PC32,
+            R_386_GOT32,
+            R_386_PLT32,
+            R_386_COPY,
+            R_386_GLOB_DAT,
+            R_386_JUMP_SLOT,
+            R_386_RELATIVE,
+            R_386_GOTOFF,
+            R_386_GOTPC,
+            R_386_TLS_TPOFF,
+            R_386_TLS_IE,
+            R_386_TLS_GOTIE,
+            R_386_TLS_LE,
+            R_386_TLS_GD,
+            R_386_TLS_LDM,
+            R_386_16,
+            R_386_PC16,
+            R_386_8,
+            R_386_PC8,
+            R_386_TLS_GD_32,
+            R_386_TLS_GD_PUSH,
+            R_386_TLS_GD_CALL,
+            R_386_TLS_GD_POP,
+            R_386_TLS_LDM_32,
+            R_386_TLS_LDM_PUSH,
+            R_386_TLS_LDM_CALL,
+            R_386_TLS_LDM_POP,
+            R_386_TLS_LDO_32,
+            R_386_TLS_IE_32,
+            R_386_TLS_LE_32,
+            R_386_TLS_DTPMOD32,
+            R_386_TLS_DTPOFF32,
+            R_386_TLS_TPOFF32,
+            R_386_SIZE32,
+            R_386_TLS_GOTDESC,
+            R_386_TLS_DESC_CALL,
+            R_386_TLS_DESC,
+            R_386_IRELATIVE
+        },
+        elf::EM_X86_64 => rnames! {
+            R_X86_64_NONE,
+            R_X86_64_64,
+            R_X86_64_PC32,
+            R_X86_64_GOT32,
+            R_X86_64_PLT32,
+            R_X86_64_COPY,
+            R_X86_64_GLOB_DAT,
+            R_X86_64_JUMP_SLOT,
+            R_X86_64_RELATIVE,
+            R_X86_64_GOTPCREL,
+            R_X86_64_32,
+            R_X86_64_32S,
+            R_X86_64_16,
+            R_X86_64_PC16,
+            R_X86_64_8,
+            R_X86_64_PC8,
+            R_X86_64_DTPMOD64,
+            R_X86_64_DTPOFF64,
+            R_X86_64_TPOFF64,
+            R_X86_64_TLSGD,
+            R_X86_64_TLSLD,
+            R_X86_64_DTPOFF32,
+            R_X86_64_GOTTPOFF,
+            R_X86_64_TPOFF32,
+            R_X86_64_PC64,
+            R_X86_64_GOTOFF64,
+            R_X86_64_GOTPC32,
+            R_X86_64_SIZE32,
+            R_X86_64_SIZE64,
+            R_X86_64_GOTPC32_TLSDESC,
+            R_X86_64_TLSDESC_CALL,
+            R_X86_64_TLSDESC,
+            R_X86_64_IRELATIVE
+        },
+        _ => "<unimplemented>"
+    }
+}
