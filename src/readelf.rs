@@ -106,8 +106,9 @@ fn symbol_name<'a>(reader: &elf::Reader<'a>, sym: &elf::SymbolRef<'a>) -> &'a st
     }.map_or("", to_utf8)
 }
 
-fn print_symbols(reader: &elf::Reader) -> Result<(), Error> {
-    let symtab_section = if let Some(s) = reader.symtab()? {
+fn print_symbols(reader: &elf::Reader, dynamic: bool) -> Result<(), Error> {
+    let symtab_section = if dynamic { reader.dynsym()? } else { reader.symtab()? };
+    let symtab_section = if let Some(s) = symtab_section {
         s
     } else {
         return Ok(());
@@ -212,6 +213,9 @@ fn main() -> Result<(), Error> {
         .arg(Arg::with_name("symbols")
              .help("An alias for --syms")
              .long("symbols"))
+        .arg(Arg::with_name("dyn-syms")
+             .help("Display the dynamic symbol table")
+             .long("dyn-syms"))
         .arg(Arg::with_name("relocs")
              .help("Display the relocations (if present)")
              .short("r")
@@ -220,16 +224,17 @@ fn main() -> Result<(), Error> {
              .help("Input ELF files")
              .multiple(true)
              .required(true))
-        .help_short("h")
+        .help_short("H")
         .version_short("v")
         .get_matches();
 
     let all = matches.is_present("all");
     let headers = all || matches.is_present("headers");
     let file_header = headers || matches.is_present("file-header");
-    let program_headers = headers || matches.is_present("program-headers") || matches.is_present("segments");
+    let _program_headers = headers || matches.is_present("program-headers") || matches.is_present("segments");
     let section_headers = headers || matches.is_present("section-headers") || matches.is_present("sections");
     let symbols = all || matches.is_present("syms") || matches.is_present("symbols");
+    let dynsyms = matches.is_present("dyn-sym");
     let relocations = all || matches.is_present("relocs");
     let input = matches.values_of("elf-file").unwrap();
 
@@ -242,12 +247,18 @@ fn main() -> Result<(), Error> {
         if section_headers {
             print_sections(&reader, !file_header);
         }
-        if symbols {
-            print_symbols(&reader)?;
-        }
+        // TODO: program_headers
+        // TODO: dynamic
         if relocations {
             print_relocations(&reader)?;
         }
+        if dynsyms {
+            print_symbols(&reader, true)?;
+        }
+        if symbols {
+            print_symbols(&reader, false)?;
+        }
+        // TODO: histogram
     }
     Ok(())
 }
