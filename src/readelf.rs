@@ -4,6 +4,7 @@ extern crate elftk;
 extern crate failure;
 
 
+use std::cmp::{max, min};
 use std::fs;
 use std::str;
 
@@ -23,6 +24,17 @@ fn entries(num: usize) -> &'static str {
     if num == 1 { "entry" } else { "entries" }
 }
 
+fn file_type(ftype: elf::Elf_Half) -> &'static str {
+    match ftype {
+        elf::ET_REL  => "REL (Relocatable file)",
+        elf::ET_EXEC => "EXEC (Executable file)",
+        elf::ET_DYN  => "DYN (Shared object file)",
+        elf::ET_CORE => "CORE (Core file)",
+        _            => "<Unknown>",
+    }
+}
+
+
 fn print_header(reader: &elf::Reader) {
     let ehdr = reader.header();
     let e_ident = ehdr.e_ident();
@@ -32,7 +44,7 @@ fn print_header(reader: &elf::Reader) {
     for i in &e_ident {
         print!(" {:02x}", i);
     }
-    println!("\n  {:34} {}", "Class", elf::elf_class_name(e_ident[elf::EI_CLASS]));
+    println!("\n  {:34} {}", "Class", elf::class_name(e_ident[elf::EI_CLASS]));
     let data = match e_ident[elf::EI_DATA] {
         elf::ELFDATANONE => "None",
         elf::ELFDATA2LSB => "2's complement, little endian",
@@ -42,17 +54,10 @@ fn print_header(reader: &elf::Reader) {
     println!("  {:34} {}", "Data", data);
     println!("  {:34} {}{}", "Version", e_ident[elf::EI_VERSION],
              if elf::Elf_Word::from(e_ident[elf::EI_VERSION]) == elf::EV_CURRENT { " (current)" } else { "" });
-    println!("  {:34} {}", "OS/ABI", elf::elf_osabi_name(e_ident[elf::EI_OSABI]));
+    println!("  {:34} {}", "OS/ABI", elf::osabi_name(e_ident[elf::EI_OSABI]));
     println!("  {:34} {}", "ABI Version", e_ident[elf::EI_ABIVERSION]);
-    let file_type = match ehdr.e_type() {
-        elf::ET_REL  => " (Relocatable file)",
-        elf::ET_EXEC => " (Executable file)",
-        elf::ET_DYN  => " (Shared object file)",
-        elf::ET_CORE => " (Core file)",
-        _            => "",
-    };
-    println!("  {:34} {}{}", "Type", elf::elf_type_name(ehdr.e_type()), file_type);
-    println!("  {:34} {}", "Machine", elf::elf_machine_name(ehdr.e_machine()));
+    println!("  {:34} {}", "Type", file_type(ehdr.e_type()));
+    println!("  {:34} {}", "Machine", elf::machine_name(ehdr.e_machine()));
     println!("  {:34} 0x{:x}", "Version", ehdr.e_version());
     println!("  {:34} 0x{:x}", "Entry point address", ehdr.e_entry());
     println!("  {:34} {} (bytes into file)", "Start of program headers", ehdr.e_phoff());
@@ -67,11 +72,11 @@ fn print_header(reader: &elf::Reader) {
              reader.section_string_table_index().unwrap_or(0));
 }
 
-fn print_sections(reader: &elf::Reader, show_count: bool) {
+fn print_sections(reader: &elf::Reader, print_info: bool) {
     let sections = reader.section_headers();
-    let offset = reader.header().e_shoff();
-    if show_count {
-        println!("There are {} section headers, starting at offset 0x{:x}:", sections.len(), offset);
+    if print_info {
+        println!("There are {} section headers, starting at offset 0x{:x}:",
+                 sections.len(), reader.header().e_shoff());
     }
     println!("\nSection Headers:");
     println!("  [Nr] {:17} {:15} {:8} {:6} {:6} ES Flg Lk Inf Al",
@@ -81,15 +86,75 @@ fn print_sections(reader: &elf::Reader, show_count: bool) {
         let (flags, len) = section_flags(shdr.sh_flags());
         let flags = str::from_utf8(&flags[..len]).unwrap();
         println!("  [{:2}] {:17} {:15} {:08x} {:06x} {:06x} {:02x} {:>3} {:>2} {:>3} {:>2}",
-                 index, name, elf::section_type_name(shdr.sh_type()), shdr.sh_addr(),
-                 shdr.sh_offset(), shdr.sh_size(), shdr.sh_entsize(), &flags[..len],
-                 shdr.sh_link(), shdr.sh_info(), shdr.sh_addralign());
+                 index,
+                 name,
+                 elf::section_type_name(shdr.sh_type()),
+                 shdr.sh_addr(),
+                 shdr.sh_offset(),
+                 shdr.sh_size(),
+                 shdr.sh_entsize(),
+                 &flags[..len],
+                 shdr.sh_link(),
+                 shdr.sh_info(),
+                 shdr.sh_addralign());
     }
     println!("Key to Flags:
   W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
   L (link order), O (extra OS processing required), G (group), T (TLS),
   C (compressed), x (unknown), o (OS specific), E (exclude),
   p (processor specific)");
+}
+
+fn print_segments(reader: &elf::Reader, print_info: bool) {
+    let segments = reader.program_headers();
+    if segments.is_empty() {
+        println!("\nThere are no program headers in this file.");
+        return;
+    }
+    if print_info {
+        let header = reader.header();
+        println!("\nElf file type is {}", file_type(header.e_type()));
+        println!("Entry point 0x{:x}", header.e_entry());
+        println!("There are {} program headers, starting at offset {}",
+                 segments.len(), header.e_phoff());
+    }
+
+    println!("\nProgram Headers:");
+    println!("  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align");
+    for phdr in segments {
+        // 32-bit
+        let flags = phdr.p_flags();
+        println!("  {:14} 0x{:06x} 0x{:08x} 0x{:08x} 0x{:05x} 0x{:05x} {}{}{} 0x{:x}",
+                 elf::segment_type_name(phdr.p_type()),
+                 phdr.p_offset(),
+                 phdr.p_vaddr(),
+                 phdr.p_paddr(),
+                 phdr.p_filesz(),
+                 phdr.p_memsz(),
+                 if flags & elf::PF_R != 0 { 'R' } else { ' ' },
+                 if flags & elf::PF_W != 0 { 'W' } else { ' ' },
+                 if flags & elf::PF_X != 0 { 'E' } else { ' ' },
+                 phdr.p_align());
+    }
+
+    println!("\n Section to Segment mapping:");
+    println!("  Segment Sections...");
+    let sections = reader.section_headers();
+    for (index, phdr) in segments.into_iter().enumerate() {
+        print!("   {:02}    ", index);
+        let p_vaddr = phdr.p_vaddr();
+        let p_vaddr_end = p_vaddr + phdr.p_memsz();
+        for shdr in sections.into_iter()
+            .filter(|shdr| shdr.sh_flags() & elf::SHF_ALLOC != 0)
+        {
+            let sh_addr = shdr.sh_addr();
+            let sh_addr_end = sh_addr + shdr.sh_size();
+            if max(p_vaddr, sh_addr) < min(p_vaddr_end, sh_addr_end) {
+                print!(" {}", to_utf8(reader.section_name(shdr)));
+            }
+        }
+        println!();
+    }
 }
 
 fn symbol_name<'a>(reader: &elf::Reader<'a>, sym: &elf::SymbolRef<'a>) -> &'a str {
@@ -231,7 +296,7 @@ fn main() -> Result<(), Error> {
     let all = matches.is_present("all");
     let headers = all || matches.is_present("headers");
     let file_header = headers || matches.is_present("file-header");
-    let _program_headers = headers || matches.is_present("program-headers") || matches.is_present("segments");
+    let program_headers = headers || matches.is_present("program-headers") || matches.is_present("segments");
     let section_headers = headers || matches.is_present("section-headers") || matches.is_present("sections");
     let symbols = all || matches.is_present("syms") || matches.is_present("symbols");
     let dynsyms = matches.is_present("dyn-sym");
@@ -247,7 +312,9 @@ fn main() -> Result<(), Error> {
         if section_headers {
             print_sections(&reader, !file_header);
         }
-        // TODO: program_headers
+        if program_headers {
+            print_segments(&reader, !file_header);
+        }
         // TODO: dynamic
         if relocations {
             print_relocations(&reader)?;
