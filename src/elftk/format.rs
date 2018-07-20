@@ -99,12 +99,16 @@ impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> {
     pub fn len(&self) -> usize {
         self.apply(|s| s.len(), |s| s.len())
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.apply(|s| s.is_empty(), |s| s.is_empty())
+    }
 }
 
 impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> {
     pub fn get(&self, index: usize) -> ElfResult<ElfRef<'a, T32, T64>> {
         if index >= self.len() {
-            return Err(ElfError::IndexOutOfBounds { index: index, length: self.len() });
+            return Err(ElfError::IndexOutOfBounds { index, length: self.len() });
         }
         Ok(self.clone().map(move |slice| &slice[index], move |slice| &slice[index]))
     }
@@ -127,7 +131,7 @@ impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> where
             raw.apply(move |s| (mem::size_of::<T32>(), mem::align_of::<T32>(), s.len(), s.as_ptr() as usize),
                       move |s| (mem::size_of::<T64>(), mem::align_of::<T64>(), s.len(), s.as_ptr() as usize));
         if length % e_size != 0 {
-            return Err(ElfError::NotMultipleOfSize { size: e_size, length: length });
+            return Err(ElfError::NotMultipleOfSize { size: e_size, length });
         }
         if addr & (e_align - 1) != 0 {
             return Err(ElfError::AlignmentError { alignment: e_align, address: addr });
@@ -154,10 +158,10 @@ impl<'a, T32, T64> Iterator for ElfIter<'a, T32, T64> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match *self {
-            ElfT::Elf32LE(ref mut it) => it.next().map(move |x| ElfT::Elf32LE(x)),
-            ElfT::Elf32BE(ref mut it) => it.next().map(move |x| ElfT::Elf32BE(x)),
-            ElfT::Elf64LE(ref mut it) => it.next().map(move |x| ElfT::Elf64LE(x)),
-            ElfT::Elf64BE(ref mut it) => it.next().map(move |x| ElfT::Elf64BE(x)),
+            ElfT::Elf32LE(ref mut it) => it.next().map(ElfT::Elf32LE),
+            ElfT::Elf32BE(ref mut it) => it.next().map(ElfT::Elf32BE),
+            ElfT::Elf64LE(ref mut it) => it.next().map(ElfT::Elf64LE),
+            ElfT::Elf64BE(ref mut it) => it.next().map(ElfT::Elf64BE),
         }
     }
 

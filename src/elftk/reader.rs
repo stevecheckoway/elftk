@@ -24,8 +24,8 @@ macro_rules! field_impl {
     ( $field:ident, $t32:ident, $t64:ident ) => {
         pub fn $field(&self) -> $t64 {
             match *self {
-                ElfT::Elf32LE(s) => $t32::from_le(s.$field) as $t64,
-                ElfT::Elf32BE(s) => $t32::from_be(s.$field) as $t64,
+                ElfT::Elf32LE(s) => $t32::from_le(s.$field).into(),
+                ElfT::Elf32BE(s) => $t32::from_be(s.$field).into(),
                 ElfT::Elf64LE(s) => $t64::from_le(s.$field),
                 ElfT::Elf64BE(s) => $t64::from_be(s.$field),
             }
@@ -104,7 +104,7 @@ impl<'a> Reader<'a> {
             return Err(ElfError::InvalidHeaderField {
                 header: "ELF",
                 field: "e_ident[EI_VERSION]",
-                value: data[EI_VERSION] as u64,
+                value: data[EI_VERSION].into(),
             });
         }
 
@@ -118,14 +118,14 @@ impl<'a> Reader<'a> {
                 return Err(ElfError::InvalidHeaderField {
                     header: "ELF",
                     field: "e_ident[EI_DATA]",
-                    value: x as u64,
+                    value: x.into(),
                 });
             },
             (x, ELFDATA2LSB) | (x, ELFDATA2MSB) => {
                 return Err(ElfError::InvalidHeaderField {
                     header: "ELF",
                     field: "e_ident[EI_CLASS]",
-                    value: x as u64,
+                    value: x.into(),
                 });
             },
             _ => unreachable!(),
@@ -136,16 +136,16 @@ impl<'a> Reader<'a> {
             return Err(ElfError::InvalidHeaderField {
                 header: "ELF",
                 field: "e_version",
-                value: ehdr.e_version() as u64,
+                value: ehdr.e_version().into(),
             });
         }
 
         let mut reader = Reader {
-            data: data,
-            ehdr: ehdr,
-            symtab_index: SHN_UNDEF as Elf_Word,
-            dynsym_index: SHN_UNDEF as Elf_Word,
-            dynamic_index: SHN_UNDEF as Elf_Word,
+            data,
+            ehdr,
+            symtab_index: SHN_UNDEF.into(),
+            dynsym_index: SHN_UNDEF.into(),
+            dynamic_index: SHN_UNDEF.into(),
         };
 
         // Check the program and section headers.
@@ -168,8 +168,8 @@ impl<'a> Reader<'a> {
         // Check the program headers, if any.
         let phoff = reader.ehdr.e_phoff();
         if phoff > 0 {
-            let size = reader.ehdr.e_phentsize() as u64;
-            let num = reader.ehdr.e_phnum() as u64;
+            let size = u64::from(reader.ehdr.e_phentsize());
+            let num = u64::from(reader.ehdr.e_phnum());
             if !array_in_bounds(phoff, size, num) {
                 return Err(ElfError::NotContainedInFile { what: "program headers", which: phoff });
             }
@@ -192,7 +192,7 @@ impl<'a> Reader<'a> {
         }
         let shoff = reader.ehdr.e_shoff();
         if shoff > 0 {
-            let size = reader.ehdr.e_shentsize() as u64;
+            let size = u64::from(reader.ehdr.e_shentsize());
             let shnum = reader.ehdr.e_shnum();
             let shstrndx = reader.ehdr.e_shstrndx();
 
@@ -200,14 +200,14 @@ impl<'a> Reader<'a> {
                 return Err(ElfError::InvalidHeaderField {
                     header:"ELF",
                     field: "e_shnum",
-                    value: shnum as u64,
+                    value: shnum.into(),
                 });
             }
             if shstrndx >= SHN_LORESERVE && shstrndx != SHN_XINDEX {
                 return Err(ElfError::InvalidHeaderField {
                     header:"ELF",
                     field: "e_shstrndx",
-                    value: shstrndx as u64,
+                    value: shstrndx.into(),
                 });
             }
 
@@ -218,8 +218,8 @@ impl<'a> Reader<'a> {
                 return Err(ElfError::NotContainedInFile { what: "section headers", which: shoff });
             }
             let num = reader.num_sections();
-            if !array_in_bounds(shoff, size, num as u64) {
-                return Err(ElfError::NotContainedInFile { what: "section headers", which: shoff+size*num as u64 });
+            if !array_in_bounds(shoff, size, num.into()) {
+                return Err(ElfError::NotContainedInFile { what: "section headers", which: shoff+size*u64::from(num) });
             }
 
             if (is_64bit && size as usize != mem::size_of::<Elf64_Shdr>()) ||
@@ -245,27 +245,27 @@ impl<'a> Reader<'a> {
                     return Err(ElfError::InvalidHeaderField {
                         header: "section",
                         field: "sh_link",
-                        value: shdr.sh_link() as u64,
+                        value: shdr.sh_link().into(),
                     });
                 }
                 if shdr.sh_flags() & SHF_INFO_LINK != 0 && shdr.sh_info() >= num {
                     return Err(ElfError::InvalidHeaderField {
                         header: "section",
                         field: "sh_info",
-                        value: shdr.sh_info() as u64,
+                        value: shdr.sh_info().into(),
                     });
                 }
 
                 let index = index as Elf_Word;
                 match section_type {
                     SHT_SYMTAB => {
-                        if reader.symtab_index != SHN_UNDEF as Elf_Word {
+                        if reader.symtab_index != Elf_Word::from(SHN_UNDEF) {
                             return Err(ElfError::MultipleSections { section: "SYMTAB" });
                         }
                         reader.symtab_index = index;
                     },
                     SHT_DYNSYM => {
-                        if reader.dynsym_index != SHN_UNDEF as Elf_Word {
+                        if reader.dynsym_index != Elf_Word::from(SHN_UNDEF) {
                             return Err(ElfError::MultipleSections { section: "DYNSYM" });
                         }
                         reader.dynsym_index = index;
@@ -325,7 +325,7 @@ impl<'a> Reader<'a> {
         }
         let shnum = self.ehdr.e_shnum();
         if shnum > 0 {
-            shnum as Elf_Word
+            shnum.into()
         } else {
             self.section_0().sh_size() as Elf_Word
         }
@@ -339,7 +339,7 @@ impl<'a> Reader<'a> {
         if shstrndx == SHN_XINDEX {
             Some(self.section_0().sh_link())
         } else {
-            Some(shstrndx as Elf_Word)
+            Some(shstrndx.into())
         }
     }
 
@@ -417,15 +417,15 @@ impl<'a> Reader<'a> {
         };
         Ok(match shdr.sh_type() {
             SHT_NULL | SHT_NOBITS   => unreachable!(),
-            SHT_STRTAB              => SectionDataRef::StringTable(StringTableRef { data: data }),
+            SHT_STRTAB              => SectionDataRef::StringTable(StringTableRef { data }),
             SHT_SYMTAB | SHT_DYNSYM => {
                 let symbol_names = self.linked_string_table(shdr.sh_link())?;
                 let entries = SymbolTableEntriesRef::try_from(shdr.construct_from(data))?;
                 let shndx = None; // TODO: 
                 SectionDataRef::SymbolTable(SymbolTableRef {
-                    symbol_names: symbol_names,
-                    entries: entries,
-                    shndx: shndx,
+                    symbol_names,
+                    entries,
+                    shndx,
                 })
             },
             SHT_REL => SectionDataRef::RelocationTable(RelTableRef {
@@ -445,15 +445,11 @@ impl<'a> Reader<'a> {
         let name = self.section_string_table()?
             .and_then(|strtab| strtab.get_string(shdr.sh_name()));
         let data = self.section_data(shdr)?;
-        Ok(SectionRef {
-            name: name,
-            shdr: shdr,
-            data: data,
-        })
+        Ok(SectionRef { name, shdr, data })
     }
 
     pub fn symtab(&self) -> ElfResult<Option<SectionRef<'a>>> {
-        if self.symtab_index == SHN_UNDEF as Elf_Word {
+        if self.symtab_index == Elf_Word::from(SHN_UNDEF) {
             return Ok(None);
         }
         let shdr = self.section_headers().get(self.symtab_index as usize)?;
@@ -461,7 +457,7 @@ impl<'a> Reader<'a> {
     }
 
     pub fn dynsym(&self) -> ElfResult<Option<SectionRef<'a>>> {
-        if self.dynsym_index == SHN_UNDEF as Elf_Word {
+        if self.dynsym_index == Elf_Word::from(SHN_UNDEF) {
             return Ok(None);
         }
         let shdr = self.section_headers().get(self.dynsym_index as usize)?;
@@ -552,6 +548,10 @@ impl<'a> SymbolTableRef<'a> {
         self.entries.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     pub fn get<'b>(&'b self, index: usize) -> ElfResult<SymbolRef<'a>> where
         'a: 'b
     {
@@ -559,7 +559,7 @@ impl<'a> SymbolTableRef<'a> {
         let shndx = entry.st_shndx();
         let section;
         if shndx < SHN_LORESERVE {
-            section = SectionIndex::Normal(shndx as Elf_Word);
+            section = SectionIndex::Normal(shndx.into());
         } else if shndx == SHN_XINDEX {
             if let Some(shndx) = self.shndx {
                 section = SectionIndex::Normal(shndx.get(index)?.value());
@@ -571,8 +571,8 @@ impl<'a> SymbolTableRef<'a> {
         }
         let symbol_name = self.symbol_names.get_string(entry.st_name());
         Ok(SymbolRef {
-            symbol_name: symbol_name,
-            section: section,
+            symbol_name,
+            section,
             value: entry.st_value(),
             size: entry.st_size(),
             info: entry.st_info(),
@@ -597,7 +597,7 @@ impl<'a> RelTableEntryRef<'a> {
 
     pub fn relocation_type(&self) -> Elf_Word {
         let info = self.r_info();
-        self.apply(|_| info & 0xff, |_| info & 0xffffffff) as Elf_Word
+        self.apply(|_| info & 0xff, |_| info & 0xffff_ffff) as Elf_Word
     }
 }
 
@@ -613,7 +613,7 @@ impl<'a> RelaTableEntryRef<'a> {
 
     pub fn relocation_type(&self) -> Elf_Word {
         let info = self.r_info();
-        self.apply(|_| info & 0xff, |_| info & 0xffffffff) as Elf_Word
+        self.apply(|_| info & 0xff, |_| info & 0xffff_ffff) as Elf_Word
     }
 }
 

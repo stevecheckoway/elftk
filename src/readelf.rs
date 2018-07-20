@@ -29,7 +29,7 @@ fn print_header(reader: &elf::Reader) {
 
     println!("ELF Header:");
     print!("  Magic:  ");
-    for i in e_ident.iter() {
+    for i in &e_ident {
         print!(" {:02x}", i);
     }
     println!("\n  {:34} {}", "Class", elf::elf_class_name(e_ident[elf::EI_CLASS]));
@@ -41,7 +41,7 @@ fn print_header(reader: &elf::Reader) {
     };
     println!("  {:34} {}", "Data", data);
     println!("  {:34} {}{}", "Version", e_ident[elf::EI_VERSION],
-             if e_ident[elf::EI_VERSION] as elf::Elf_Word == elf::EV_CURRENT { " (current)" } else { "" });
+             if elf::Elf_Word::from(e_ident[elf::EI_VERSION]) == elf::EV_CURRENT { " (current)" } else { "" });
     println!("  {:34} {}", "OS/ABI", elf::elf_osabi_name(e_ident[elf::EI_OSABI]));
     println!("  {:34} {}", "ABI Version", e_ident[elf::EI_ABIVERSION]);
     let file_type = match ehdr.e_type() {
