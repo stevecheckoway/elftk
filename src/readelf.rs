@@ -20,9 +20,54 @@ fn entries(num: usize) -> &'static str {
     if num == 1 { "entry" } else { "entries" }
 }
 
+fn print_header(reader: &elf::Reader) {
+    let ehdr = reader.header();
+    let e_ident = ehdr.e_ident();
+
+    println!("ELF Header:");
+    print!("  Magic:  ");
+    for i in e_ident.iter() {
+        print!(" {:02x}", i);
+    }
+    println!("\n  {:34} {}", "Class", elf::elf_class_name(e_ident[elf::EI_CLASS]));
+    let data = match e_ident[elf::EI_DATA] {
+        elf::ELFDATANONE => "None",
+        elf::ELFDATA2LSB => "2's complement, little endian",
+        elf::ELFDATA2MSB => "2's complement, big endian",
+        _                => "Unknown",
+    };
+    println!("  {:34} {}", "Data", data);
+    println!("  {:34} {}{}", "Version", e_ident[elf::EI_VERSION],
+             if e_ident[elf::EI_VERSION] as elf::Elf_Word == elf::EV_CURRENT { " (current)" } else { "" });
+    println!("  {:34} {}", "OS/ABI", elf::elf_osabi_name(e_ident[elf::EI_OSABI]));
+    println!("  {:34} {}", "ABI Version", e_ident[elf::EI_ABIVERSION]);
+    let file_type = match ehdr.e_type() {
+        elf::ET_REL  => " (Relocatable file)",
+        elf::ET_EXEC => " (Executable file)",
+        elf::ET_DYN  => " (Shared object file)",
+        elf::ET_CORE => " (Core file)",
+        _            => "",
+    };
+    println!("  {:34} {}{}", "Type", elf::elf_type_name(ehdr.e_type()), file_type);
+    println!("  {:34} {}", "Machine", elf::elf_machine_name(ehdr.e_machine()));
+    println!("  {:34} 0x{:x}", "Version", ehdr.e_version());
+    println!("  {:34} 0x{:x}", "Entry point address", ehdr.e_entry());
+    println!("  {:34} {} (bytes into file)", "Start of program headers", ehdr.e_phoff());
+    println!("  {:34} {} (bytes into file)", "Start of section headers", ehdr.e_shoff());
+    println!("  {:34} 0x{:x}", "Flags", ehdr.e_flags());
+    println!("  {:34} {} (bytes)", "Size of this header", ehdr.e_ehsize());
+    println!("  {:34} {} (bytes)", "Size of program headers", ehdr.e_phentsize());
+    println!("  {:34} {}", "Number of program headers", ehdr.e_phnum());
+    println!("  {:34} {} (bytes)", "Size of section headers", ehdr.e_shentsize());
+    println!("  {:34} {}", "Number of section headers", ehdr.e_shnum());
+    println!("  {:34} {}", "Section header string table index",
+             reader.section_string_table_index().unwrap_or(0));
+}
+
 fn print_sections(reader: &elf::Reader) {
     let sections = reader.section_headers();
     let offset = reader.header().e_shoff();
+    // TODO: Don't print this if the elf header has been printed.
     println!("There are {} section headers, starting at offset 0x{:x}:\n", sections.len(), offset);
     println!("Section Headers:");
     println!("  [Nr] {:17} {:15} {:8} {:6} {:6} ES Flg Lk Inf Al",
@@ -90,6 +135,7 @@ fn print_relocations(reader: &elf::Reader) -> Result<(), Error> {
         };
         match section.data {
             elf::SectionDataRef::RelocationTable(tab) => {
+                // 32-bit
                 println!("\nRelocation section '{}' at offset 0x{:x} contains {} {}:",
                          section.name.map_or("", to_utf8), section.shdr.sh_offset(),
                          tab.entries.len(), entries(tab.entries.len()));
@@ -104,8 +150,23 @@ fn print_relocations(reader: &elf::Reader) -> Result<(), Error> {
                              symbol.value, name);
                 }
             },
-            elf::SectionDataRef::ExplicitRelocationTable(_tab) => {
-                println!("RELA");
+            elf::SectionDataRef::ExplicitRelocationTable(tab) => {
+                // 64-bit
+                println!("\nRelocation section '{}' at offset 0x{:x} contains {} {}:",
+                         section.name.map_or("", to_utf8), section.shdr.sh_offset(),
+                         tab.entries.len(), entries(tab.entries.len()));
+                println!("  Offset          Info           Type           Sym. Value    Sym. Name + Addend");
+                let symtab = tab.symbol_table;
+                for entry in tab.entries {
+                    let symbol = symtab.get(entry.symbol_index() as usize)?;
+                    let name = symbol_name(reader, &symbol);
+                    let addend = entry.r_addend();
+                    let (addend, sign) = if addend < 0 { (-addend, '-') } else { (addend, '+') };
+                    println!("{:012x}  {:012x} {:16}  {:016x} {} {} {}",
+                             entry.r_offset(), entry.r_info(),
+                             relocation_name(machine, entry.relocation_type()),
+                             symbol.value, name, sign, addend);
+                }
             },
             _ => unreachable!(),
         }
@@ -121,6 +182,7 @@ fn main() -> Result<(), Error> {
     }
     let data = fs::read(&args[1])?;
     let reader = elf::Reader::new(&data)?;
+    print_header(&reader);
     print_sections(&reader);
     print_symbols(&reader)?;
     print_relocations(&reader)?;
