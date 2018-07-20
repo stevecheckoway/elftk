@@ -35,7 +35,7 @@ pub const ELFMAG2: u8 = b'L'; // e_ident[EI_MAG2]
 pub const ELFMAG3: u8 = b'F'; // e_ident[EI_MAG3]
 
 // EI_CLASS
-constants!(elf_class_name, u8,
+constants!(class_name, u8,
            ELFCLASSNONE = 0; "NONE",   // Invalid class
            ELFCLASS32   = 1; "ELF32",  // 32-bit objects
            ELFCLASS64   = 2; "ELF64"); // 64-bit objects
@@ -48,7 +48,7 @@ pub const ELFDATA2MSB: u8 = 2; // Big endian
 // EI_VERSION must be EV_CURRENT
 
 // EI_OSABI
-constants!(elf_osabi_name, u8,
+constants!(osabi_name, u8,
            ELFOSABI_NONE     = 0;  "UNIX - System V",
            ELFOSABI_HPUX     = 1;  "Hewlett-Packard HP-UX",
            ELFOSABI_NETBSD   = 2;  "NetBSD",
@@ -73,7 +73,7 @@ pub const ELFOSABI_LINUX:    u8 = 3;  // Linux historical - alias for ELFOSABI_G
 // EI_PAD through EI_NIDENT should be 0
 
 // e_type
-constants!(elf_type_name, Elf_Half,
+constants!(type_name, Elf_Half,
            ET_NONE = 0; "NONE",
            ET_REL  = 1; "REL",
            ET_EXEC = 2; "EXEC",
@@ -85,7 +85,7 @@ pub const ET_LOPROC: Elf_Half = 0xff00; // Processor-specific
 pub const ET_HIPROC: Elf_Half = 0xffff; // Processor-specific
 
 // e_machine
-constants!(elf_machine_name, Elf_Half,
+constants!(machine_name, Elf_Half,
            EM_NONE          = 0;   "No machine",
            EM_M32           = 1;   "AT&T WE 32100",
            EM_SPARC         = 2;   "SPARC",
