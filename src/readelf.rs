@@ -1,13 +1,16 @@
+#[macro_use]
+extern crate clap;
 extern crate elftk;
 extern crate failure;
 
-mod names;
 
 use std::fs;
-use std::io;
 use std::str;
 
+use clap::{Arg, AppSettings};
 use elftk as elf;
+
+mod names;
 use names::*;
 
 use failure::Error;
@@ -64,12 +67,13 @@ fn print_header(reader: &elf::Reader) {
              reader.section_string_table_index().unwrap_or(0));
 }
 
-fn print_sections(reader: &elf::Reader) {
+fn print_sections(reader: &elf::Reader, show_count: bool) {
     let sections = reader.section_headers();
     let offset = reader.header().e_shoff();
-    // TODO: Don't print this if the elf header has been printed.
-    println!("There are {} section headers, starting at offset 0x{:x}:\n", sections.len(), offset);
-    println!("Section Headers:");
+    if show_count {
+        println!("There are {} section headers, starting at offset 0x{:x}:", sections.len(), offset);
+    }
+    println!("\nSection Headers:");
     println!("  [Nr] {:17} {:15} {:8} {:6} {:6} ES Flg Lk Inf Al",
              "Name", "Type", "Addr", "Off", "Size");
     for (index, shdr) in sections.into_iter().enumerate() {
@@ -175,16 +179,75 @@ fn print_relocations(reader: &elf::Reader) -> Result<(), Error> {
 }
 
 fn main() -> Result<(), Error> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} input", &args[0]);
-        Err(io::Error::new(io::ErrorKind::InvalidInput, "needs arg"))?;
+    let matches = app_from_crate!()
+        .setting(AppSettings::DeriveDisplayOrder)
+        .setting(AppSettings::UnifiedHelpMessage)
+        .arg(Arg::with_name("all")
+             .help("Equivalent to: -h -l -S -s -r -d -V -A -I")
+             .short("a")
+             .long("all"))
+        .arg(Arg::with_name("file-header")
+             .help("Display the ELF file header")
+             .short("h")
+             .long("file-header"))
+        .arg(Arg::with_name("program-headers")
+             .help("Display the program headers")
+             .short("l")
+             .long("program-headers"))
+        .arg(Arg::with_name("segments")
+             .help("An alias for --program-headers")
+             .long("segments"))
+        .arg(Arg::with_name("section-headers")
+             .help("Display the section headers")
+             .short("S")
+             .long("sections"))
+        .arg(Arg::with_name("headers")
+             .help("Equivalent to: -h -l -S")
+             .short("e")
+             .long("headers"))
+        .arg(Arg::with_name("syms")
+             .help("Display the symbol table")
+             .short("s")
+             .long("syms"))
+        .arg(Arg::with_name("symbols")
+             .help("An alias for --syms")
+             .long("symbols"))
+        .arg(Arg::with_name("relocs")
+             .help("Display the relocations (if present)")
+             .short("r")
+             .long("relocs"))
+        .arg(Arg::with_name("elf-file")
+             .help("Input ELF files")
+             .multiple(true)
+             .required(true))
+        .help_short("h")
+        .version_short("v")
+        .get_matches();
+
+    let all = matches.is_present("all");
+    let headers = all || matches.is_present("headers");
+    let file_header = headers || matches.is_present("file-header");
+    let program_headers = headers || matches.is_present("program-headers") || matches.is_present("segments");
+    let section_headers = headers || matches.is_present("section-headers") || matches.is_present("sections");
+    let symbols = all || matches.is_present("syms") || matches.is_present("symbols");
+    let relocations = all || matches.is_present("relocs");
+    let input = matches.values_of("elf-file").unwrap();
+
+    for file in input {
+        let data = fs::read(file)?;
+        let reader = elf::Reader::new(&data)?;
+        if file_header {
+            print_header(&reader);
+        }
+        if section_headers {
+            print_sections(&reader, !file_header);
+        }
+        if symbols {
+            print_symbols(&reader)?;
+        }
+        if relocations {
+            print_relocations(&reader)?;
+        }
     }
-    let data = fs::read(&args[1])?;
-    let reader = elf::Reader::new(&data)?;
-    print_header(&reader);
-    print_sections(&reader);
-    print_symbols(&reader)?;
-    print_relocations(&reader)?;
     Ok(())
 }

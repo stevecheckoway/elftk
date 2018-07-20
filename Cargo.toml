@@ -2,10 +2,12 @@
 name = "elftk"
 version = "0.0.1"
 authors = ["Stephen Checkoway <s@pahtak.org>"]
+description = "Display information about the contents of ELF format files"
 
 [dependencies]
 failure = "^0.1.1"
 failure_derive = "^0.1.1"
+clap = "~2.32.0"
 
 [lib]
 name = "elftk"
