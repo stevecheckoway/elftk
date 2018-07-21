@@ -2,19 +2,19 @@
 
 use super::Elf_Word;
 
-macro_rules! relocations {
-    { $name:ident, { $($r:ident = $e:expr),+ } } => {
-        $(
-            pub const $r: Elf_Word = $e;
-        )*
-        pub fn $name(r: Elf_Word) -> &'static str {
-            match r {
-                $( $r => stringify!($r) ),+,
-                _ => "<unknown>",
-            }
-        }
-    }
-}
+// macro_rules! relocations {
+//     { $name:ident, { $($r:ident = $e:expr),+ } } => {
+//         $(
+//             pub const $r: Elf_Word = $e;
+//         )*
+//         pub fn $name(r: Elf_Word) -> &'static str {
+//             match r {
+//                 $( $r => stringify!($r) ),+,
+//                 _ => "<unknown>",
+//             }
+//         }
+//     }
+// }
 
 // i386
 relocations!(i386_relocation_name, {
