@@ -1,6 +1,6 @@
 use super::Elf_Word;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Clone, Copy, Fail)]
 pub enum ElfError {
     #[fail(display = "not an ELF file")]
     NotElfFile,
