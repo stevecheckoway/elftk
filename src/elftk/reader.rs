@@ -118,6 +118,25 @@ pub struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
+    /// Returns a new `Reader` for an ELF object file consisting of the bytes in `data`.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ``` rust
+    /// use elftk::Reader;
+    /// # // https://www.muppetlabs.com/~breadbox/software/tiny/teensy.html
+    /// # let elf_data: [u8; 84] = [
+    /// #   0x7f, 0x45, 0x4c, 0x46, 0x01, 0x01, 0x01, 0x00, 0x00, 0xb3, 0x2a, 0x31,
+    /// #   0xc0, 0x40, 0xcd, 0x80, 0x02, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00,
+    /// #   0x09, 0x80, 0x04, 0x08, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    /// #   0x00, 0x00, 0x00, 0x00, 0x34, 0x00, 0x20, 0x00, 0x01, 0x00, 0x00, 0x00,
+    /// #   0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    /// #   0x00, 0x80, 0x04, 0x08, 0x00, 0x80, 0x04, 0x08, 0x54, 0x00, 0x00, 0x00,
+    /// #   0x54, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00
+    /// # ];
+    /// let reader = Reader::new(&elf_data);
+    /// assert!(reader.is_ok());
+    /// ```
     pub fn new(data: &'a [u8]) -> Result<Reader<'a>> {
         // Check the ELF header.
         if data.len() < mem::size_of::<Elf32_Ehdr>() ||
@@ -184,13 +203,6 @@ impl<'a> Reader<'a> {
                 .and_then(|total_size| offset.checked_add(total_size))
                 .map_or(false, move |end| end <= len)
         };
-
-        if len < reader.ehdr.e_entry() {
-            return Err(Error::NotContainedInFile {
-                what: "ELF header field e_entry",
-                which: reader.ehdr.e_entry(),
-            });
-        }
 
         // Check the program headers, if any.
         let phoff = reader.ehdr.e_phoff();
