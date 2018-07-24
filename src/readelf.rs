@@ -39,7 +39,7 @@ fn file_type(ftype: elf::Elf_Half) -> &'static str {
 
 
 fn print_header(reader: &elf::Reader) {
-    let ehdr = reader.header();
+    let ehdr = reader.elf_header();
     let e_ident = ehdr.e_ident();
 
     println!("ELF Header:");
@@ -79,7 +79,7 @@ fn print_sections(reader: &elf::Reader, print_info: bool) {
     let sections = reader.section_headers();
     if print_info {
         println!("There are {} section headers, starting at offset 0x{:x}:",
-                 sections.len(), reader.header().e_shoff());
+                 sections.len(), reader.elf_header().e_shoff());
     }
     println!("\nSection Headers:");
     println!("  [Nr] {:17} {:15} {:8} {:6} {:6} ES Flg Lk Inf Al",
@@ -115,7 +115,7 @@ fn print_segments(reader: &elf::Reader, print_info: bool) {
         return;
     }
     if print_info {
-        let header = reader.header();
+        let header = reader.elf_header();
         println!("\nElf file type is {}", file_type(header.e_type()));
         println!("Entry point 0x{:x}", header.e_entry());
         println!("There are {} program headers, starting at offset {}",
@@ -200,7 +200,7 @@ fn print_symbols(reader: &elf::Reader, dynamic: bool) -> Result<()> {
 }
 
 fn print_relocations(reader: &elf::Reader) -> Result<()> {
-    let machine = reader.header().e_machine();
+    let machine = reader.elf_header().e_machine();
     for section in reader.sections_matching(|shdr| { let t = shdr.sh_type(); t == elf::SHT_REL || t == elf::SHT_RELA}) {
         match section.data {
             elf::SectionDataRef::RelocationTable(tab) => {
