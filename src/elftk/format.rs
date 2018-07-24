@@ -3,6 +3,7 @@ use std::{iter, mem, slice};
 use types::ElfType;
 use error::{ElfResult, ElfError};
 
+#[doc(hidden)]
 pub trait FromEndian {
     fn from_be(x: Self) -> Self;
     fn from_le(x: Self) -> Self;

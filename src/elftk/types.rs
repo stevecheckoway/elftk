@@ -1,30 +1,48 @@
 #![allow(non_camel_case_types)]
-#![allow(dead_code)]
 
 // Common
+/// 16-bit unsigned integer.
 pub type Elf_Half = u16;
+/// 32-bit unsigned integer.
 pub type Elf_Word = u32;
+/// 32-bit signed integer.
 pub type Elf_Sword = i32;
+/// 64-bit unsigned integer.
 pub type Elf_Xword = u64;
+/// 64-bit signed integer.
 pub type Elf_Sxword = i64;
 
 // 32-bit
+/// 16-bit unsigned integer for 32-bit ELF object files.
 pub type Elf32_Half = Elf_Half;
+/// 32-bit unsigned integer for 32-bit ELF object files.
 pub type Elf32_Word = Elf_Word;
+/// 32-bit signed integer for 32-bit ELF object files.
 pub type Elf32_Sword = Elf_Sword;
+/// 32-bit unsigned offset for 32-bit ELF object files.
 pub type Elf32_Off = u32;
+/// 32-bit address for 32-bit ELF object files.
 pub type Elf32_Addr = u32;
 
 // 64-bit
+/// 16-bit unsigned integer for 64-bit ELF object files.
 pub type Elf64_Half = Elf_Half;
+/// 32-bit unsigned integer for 64-bit ELF object files.
 pub type Elf64_Word = Elf_Word;
+/// 32-bit signed integer for 64-bit ELF object files.
 pub type Elf64_Sword = Elf_Sword;
+/// 64-bit unsigned integer for 64-bit ELF object files.
 pub type Elf64_Xword = Elf_Xword;
+/// 64-bit signed integer for 64-bit ELF object files.
 pub type Elf64_Sxword = Elf_Sxword;
+/// 64-bit unsigned offset for 64-bit ELF object files.
 pub type Elf64_Off = u64;
+/// 64-bit address for 64-bit ELF object files.
 pub type Elf64_Addr = u64;
 
-pub const EI_NIDENT: usize = 16; // Size of e_ident[]
+/// The size of [Elf32_Ehdr's e_ident](struct.Elf32_Ehdr.html#structfield.e_ident) and [Elf64_Ehdr's
+/// e_ident](struct.Elf64_Ehdr.html#structfield.e_ident) field.
+pub const EI_NIDENT: usize = 16;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -189,6 +207,7 @@ pub struct Elf64_Phdr {
     pub p_align:  Elf64_Xword,
 }
 
+#[doc(hidden)]
 pub unsafe trait ElfType {}
 unsafe impl ElfType for Elf_Half {}
 unsafe impl ElfType for Elf_Word {}

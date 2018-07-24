@@ -1,6 +1,3 @@
-#![allow(non_camel_case_types)]
-#![allow(dead_code)]
-
 use std::mem;
 use std::iter;
 
@@ -494,8 +491,8 @@ impl<'a> Reader<'a> {
         Ok(SectionRef { name, shdr, data })
     }
 
-    /// Returns a [Sections][#Sections] iterator that iterates over the sections corresponding to
-    /// the section headers returned by `iter`.
+    /// Returns an iterator over the sections corresponding to the section headers returned by
+    /// `iter`.
     pub fn get_sections<'b, I>(&'b self, iter: I) -> Sections<'a, 'b, I> where
         'a: 'b,
         I: Iterator<Item=SectionHeaderRef<'a>>,

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use types::Elf_Word;
 
 // i386
