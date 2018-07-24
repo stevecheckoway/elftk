@@ -83,68 +83,35 @@ impl<'a> SectionHeaderRef<'a> {
     field_impl!(sh_entsize,   Elf32_Word, Elf64_Xword);
 }
 
-//pub type Sections<'a, F> = iter::FilterMap<ElfIter<'a, Elf32_Shdr, Elf64_Shdr>, F>;
-
-pub struct Sections<'a, 'b> where
-    'a: 'b
+#[derive(Debug, Copy, Clone)]
+pub struct Sections<'a, 'b, I> where
+    'a: 'b,
+    I: Iterator<Item=SectionHeaderRef<'a>>,
 {
     reader: &'b Reader<'a>,
-    header_iter: <ElfSliceRef<'a, Elf32_Shdr, Elf64_Shdr> as iter::IntoIterator>::IntoIter,
+    header_iter: I,
 }
 
-impl<'a, 'b> Iterator for Sections<'a, 'b> {
+impl<'a, 'b, I> Iterator for Sections<'a, 'b, I> where
+    'a: 'b,
+    I: Iterator<Item=SectionHeaderRef<'a>>,
+{
     type Item = SectionRef<'a>;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.header_iter.next()
-            .and_then(|shdr| self.reader.get_section(shdr).ok())
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) { self.header_iter.size_hint() }
-    fn count(self) -> usize { self.header_iter.count() }
-    fn last(self) -> Option<Self::Item> {
-        if let Some(shdr) = self.header_iter.last() {
+    fn next(&mut self) -> Option<SectionRef<'a>> {
+        if let Some(shdr) = self.header_iter.next() {
             self.reader.get_section(shdr).ok()
         } else {
             None
         }
     }
-    fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        self.header_iter.nth(n)
-            .and_then(|shdr| self.reader.get_section(shdr).ok())
-    }
-}
-
-pub struct SectionsMatching<'a, 'b, Predicate> where
-    'a: 'b,
-    Predicate: Fn(SectionHeaderRef<'b>) -> bool,
-{
-    reader: &'b Reader<'a>,
-    header_iter: <ElfSliceRef<'a, Elf32_Shdr, Elf64_Shdr> as iter::IntoIterator>::IntoIter,
-    pred: Predicate,
-}
-
-impl<'a, 'b, Predicate> Iterator for SectionsMatching<'a, 'b, Predicate> where
-    Predicate: Fn(SectionHeaderRef<'b>) -> bool,
-{
-    type Item = SectionRef<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(shdr) = self.header_iter.next() {
-            if (self.pred)(shdr) {
-                return self.reader.get_section(shdr).ok();
-            }
-        }
-        None
-    }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let (_, upper) = self.header_iter.size_hint();
-        // There might be no more due to the predicate.
-        (0, upper)
+        self.header_iter.size_hint()
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Reader<'a> {
     data: &'a [u8],
     ehdr: ElfHeaderRef<'a>,
@@ -428,43 +395,16 @@ impl<'a> Reader<'a> {
         SectionHeadersRef::try_from(self.ehdr.construct_from(shdr_data)).unwrap()
     }
 
-    // pub fn sections_matching<'b, Predicate>(&'b self, p: Predicate) -> Sections<'b, impl Fn(SectionHeaderRef<'b>) -> Option<SectionRef<'b>>>
-    // where
-    //     Predicate: Fn(SectionHeaderRef<'b>) -> bool
-    // {
-    //     let f = move |shdr| {
-    //         if p(shdr) {
-    //             self.get_section(shdr).ok()
-    //         } else {
-    //             None
-    //         }
-    //     };
-    //     let iter = self.section_headers().into_iter();
-    //     iter.filter_map(f)
-    // }
-
-    // pub fn sections<'b>(&'b self) -> impl Iterator<Item=SectionRef<'a>> + 'b { //Sections<'b, impl Fn(SectionHeaderRef<'b>) -> Option<SectionRef<'b>> + 'b> {
-    //     let reader = &self;
-    //     let f = move |shdr| reader.get_section(shdr).ok();
-    //     let iter = self.section_headers().into_iter();
-    //     iter.filter_map(f)
-    // }
-    pub fn sections<'b>(&'b self) -> Sections<'a, 'b> {
-        Sections {
-            reader: self,
-            header_iter: self.section_headers().into_iter(),
-        }
+    pub fn sections<'b>(&'b self) -> Sections<'a, 'b, impl Iterator<Item=SectionHeaderRef<'a>>> {
+        self.get_sections(self.section_headers().into_iter())
     }
 
-    pub fn sections_matching<'b, Predicate>(&'b self, pred: Predicate) -> SectionsMatching<'a, 'b, Predicate> where
-        Predicate: Fn(SectionHeaderRef<'b>) -> bool,
-    {
-        SectionsMatching {
-            reader: self,
-            header_iter: self.section_headers().into_iter(),
-            pred,
-        }
-    }
+    //pub fn sections_matching<'b, Predicate>(&'b self, pred: Predicate) -> Sections<'a, 'b, impl Iterator<Item=SectionHeaderRef<'a>>> where
+    //    'a: 'b,
+    //    Predicate: Fn(&SectionHeaderRef<'b>) -> bool + 'b,
+    //{
+    //    self.get_sections(self.section_headers().into_iter().filter(pred))
+    //}
 
     pub fn section_name<'b>(&'b self, shdr: SectionHeaderRef<'a>) -> &'a [u8] where
         'a: 'b,
@@ -546,11 +486,24 @@ impl<'a> Reader<'a> {
         })
     }
 
+    /// Returns a reference to the section corresponding to the section header.
     pub fn get_section(&self, shdr: SectionHeaderRef<'a>) -> ElfResult<SectionRef<'a>> {
         let name = self.section_string_table()?
             .and_then(|strtab| strtab.get_string(shdr.sh_name()));
         let data = self.section_data(shdr)?;
         Ok(SectionRef { name, shdr, data })
+    }
+
+    /// Returns a [Sections][#Sections] iterator that iterates over the sections corresponding to
+    /// the section headers returned by `iter`.
+    pub fn get_sections<'b, I>(&'b self, iter: I) -> Sections<'a, 'b, I> where
+        'a: 'b,
+        I: Iterator<Item=SectionHeaderRef<'a>>,
+    {
+        Sections {
+            reader: self,
+            header_iter: iter,
+        }
     }
 
     pub fn symtab(&self) -> ElfResult<Option<SectionRef<'a>>> {
