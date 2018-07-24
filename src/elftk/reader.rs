@@ -399,12 +399,12 @@ impl<'a> Reader<'a> {
         self.get_sections(self.section_headers().into_iter())
     }
 
-    //pub fn sections_matching<'b, Predicate>(&'b self, pred: Predicate) -> Sections<'a, 'b, impl Iterator<Item=SectionHeaderRef<'a>>> where
-    //    'a: 'b,
-    //    Predicate: Fn(&SectionHeaderRef<'b>) -> bool + 'b,
-    //{
-    //    self.get_sections(self.section_headers().into_iter().filter(pred))
-    //}
+    pub fn sections_matching<'b, Predicate>(&'b self, pred: Predicate) -> Sections<'a, 'b, impl Iterator<Item=SectionHeaderRef<'a>>> where
+        'a: 'b,
+        Predicate: Fn(&SectionHeaderRef<'a>) -> bool,
+    {
+        self.get_sections(self.section_headers().into_iter().filter(pred))
+    }
 
     pub fn section_name<'b>(&'b self, shdr: SectionHeaderRef<'a>) -> &'a [u8] where
         'a: 'b,

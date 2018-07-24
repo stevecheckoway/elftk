@@ -198,11 +198,7 @@ fn print_symbols(reader: &elf::Reader, dynamic: bool) -> Result<(), Error> {
 
 fn print_relocations(reader: &elf::Reader) -> Result<(), Error> {
     let machine = reader.header().e_machine();
-    for shdr in reader.section_headers() {
-        let section = match shdr.sh_type() {
-            elf::SHT_REL | elf::SHT_RELA => reader.get_section(shdr)?,
-            _        => continue,
-        };
+    for section in reader.sections_matching(|shdr| { let t = shdr.sh_type(); t == elf::SHT_REL || t == elf::SHT_RELA}) {
         match section.data {
             elf::SectionDataRef::RelocationTable(tab) => {
                 // 32-bit
@@ -253,11 +249,7 @@ fn hex_string(data: &[u8]) -> String {
 }
 
 fn print_notes(reader: &elf::Reader) -> Result<(), Error> {
-    for shdr in reader.section_headers() {
-        if shdr.sh_type() != elf::SHT_NOTE {
-            continue;
-        }
-        let section = reader.get_section(shdr)?;
+    for section in reader.sections_matching(|shdr| shdr.sh_type() == elf::SHT_NOTE) {
         if let elf::SectionDataRef::NoteTable(notes) = section.data {
             println!("\nDisplaying notes found in: {}", section.name.map_or("", to_utf8));
             println!("  {:14} Type Desc", "Name");
