@@ -6,6 +6,7 @@ extern crate failure;
 
 use std::cmp::{max, min};
 use std::fs;
+use std::result;
 use std::str;
 
 use clap::{Arg, AppSettings};
@@ -15,6 +16,8 @@ mod names;
 use names::*;
 
 use failure::Error;
+
+type Result<T> = result::Result<T, Error>;
 
 fn to_utf8(s: &[u8]) -> &str {
     str::from_utf8(s).unwrap_or("<invalid>")
@@ -171,7 +174,7 @@ fn symbol_name<'a>(reader: &elf::Reader<'a>, sym: &elf::SymbolRef<'a>) -> &'a st
     }.map_or("", to_utf8)
 }
 
-fn print_symbols(reader: &elf::Reader, dynamic: bool) -> Result<(), Error> {
+fn print_symbols(reader: &elf::Reader, dynamic: bool) -> Result<()> {
     let symtab_section = if dynamic { reader.dynsym()? } else { reader.symtab()? };
     let symtab_section = if let Some(s) = symtab_section {
         s
@@ -196,7 +199,7 @@ fn print_symbols(reader: &elf::Reader, dynamic: bool) -> Result<(), Error> {
     Ok(())
 }
 
-fn print_relocations(reader: &elf::Reader) -> Result<(), Error> {
+fn print_relocations(reader: &elf::Reader) -> Result<()> {
     let machine = reader.header().e_machine();
     for section in reader.sections_matching(|shdr| { let t = shdr.sh_type(); t == elf::SHT_REL || t == elf::SHT_RELA}) {
         match section.data {
@@ -248,7 +251,7 @@ fn hex_string(data: &[u8]) -> String {
     s
 }
 
-fn print_notes(reader: &elf::Reader) -> Result<(), Error> {
+fn print_notes(reader: &elf::Reader) -> Result<()> {
     for section in reader.sections_matching(|shdr| shdr.sh_type() == elf::SHT_NOTE) {
         if let elf::SectionDataRef::NoteTable(notes) = section.data {
             println!("\nDisplaying notes found in: {}", section.name.map_or("", to_utf8));
@@ -266,7 +269,7 @@ fn print_notes(reader: &elf::Reader) -> Result<(), Error> {
     Ok(())
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<()> {
     let matches = app_from_crate!()
         .setting(AppSettings::DeriveDisplayOrder)
         .setting(AppSettings::UnifiedHelpMessage)

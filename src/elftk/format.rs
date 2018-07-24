@@ -1,7 +1,7 @@
 use std::{iter, mem, slice};
 
 use types::ElfType;
-use error::{ElfResult, ElfError};
+use error::{Result, Error};
 
 #[doc(hidden)]
 pub trait FromEndian {
@@ -97,15 +97,15 @@ impl<'a, T32, T64> ElfRef<'a, T32, T64> where
     T32: ElfType,
     T64: ElfType,
 {
-    pub(super) fn try_from(raw: ElfSliceRef<'a, u8, u8>) -> ElfResult<Self> {
+    pub(super) fn try_from(raw: ElfSliceRef<'a, u8, u8>) -> Result<Self> {
         let (e_size, e_align, length, addr) =
             raw.apply(move |s| (mem::size_of::<T32>(), mem::align_of::<T32>(), s.len(), s.as_ptr() as usize),
                       move |s| (mem::size_of::<T64>(), mem::align_of::<T64>(), s.len(), s.as_ptr() as usize));
         if e_size != length {
-            return Err(ElfError::SizeError { expected: e_size, actual: length });
+            return Err(Error::SizeError { expected: e_size, actual: length });
         }
         if addr & (e_align-1) != 0 {
-            return Err(ElfError::AlignmentError { alignment: e_align, address: addr });
+            return Err(Error::AlignmentError { alignment: e_align, address: addr });
         }
         Ok(raw.map(|slice| unsafe { &*(slice.as_ptr() as *const T32) },
                    |slice| unsafe { &*(slice.as_ptr() as *const T64) }))
@@ -137,9 +137,9 @@ impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> {
         self.apply(|s| s.is_empty(), |s| s.is_empty())
     }
 
-    pub fn get(&self, index: usize) -> ElfResult<ElfRef<'a, T32, T64>> {
+    pub fn get(&self, index: usize) -> Result<ElfRef<'a, T32, T64>> {
         if index >= self.len() {
-            return Err(ElfError::IndexOutOfBounds { index, length: self.len() });
+            return Err(Error::IndexOutOfBounds { index, length: self.len() });
         }
         Ok(self.clone().map(move |slice| &slice[index], move |slice| &slice[index]))
     }
@@ -157,15 +157,15 @@ impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> where
     ///
     /// The `raw` parameter must reference a correctly aligned slice whose length is a multiple of
     /// the size of `T32` or `T64`.
-    pub(super) fn try_from<'b: 'a>(raw: ElfSliceRef<'b, u8, u8>) -> ElfResult<Self> {
+    pub(super) fn try_from<'b: 'a>(raw: ElfSliceRef<'b, u8, u8>) -> Result<Self> {
         let (e_size, e_align, length, addr) =
             raw.apply(move |s| (mem::size_of::<T32>(), mem::align_of::<T32>(), s.len(), s.as_ptr() as usize),
                       move |s| (mem::size_of::<T64>(), mem::align_of::<T64>(), s.len(), s.as_ptr() as usize));
         if length % e_size != 0 {
-            return Err(ElfError::NotMultipleOfSize { size: e_size, length });
+            return Err(Error::NotMultipleOfSize { size: e_size, length });
         }
         if addr & (e_align - 1) != 0 {
-            return Err(ElfError::AlignmentError { alignment: e_align, address: addr });
+            return Err(Error::AlignmentError { alignment: e_align, address: addr });
         }
         let num = length / e_size;
         Ok(raw.map(|s| unsafe { slice::from_raw_parts(s.as_ptr() as *const T32, num as usize) },

@@ -118,17 +118,17 @@ pub struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-    pub fn new(data: &'a [u8]) -> ElfResult<Reader<'a>> {
+    pub fn new(data: &'a [u8]) -> Result<Reader<'a>> {
         // Check the ELF header.
         if data.len() < mem::size_of::<Elf32_Ehdr>() ||
            &data[0..4] != b"\x7fELF"
         {
-            return Err(ElfError::NotElfFile);
+            return Err(Error::NotElfFile);
         }
 
         // ELF version
         if data[EI_VERSION] != EV_CURRENT as u8 {
-            return Err(ElfError::InvalidHeaderField {
+            return Err(Error::InvalidHeaderField {
                 header: "ELF",
                 field: "e_ident[EI_VERSION]",
                 value: data[EI_VERSION].into(),
@@ -142,14 +142,14 @@ impl<'a> Reader<'a> {
             (ELFCLASS64, ELFDATA2LSB) => ElfT::Elf64LE(&data[0..mem::size_of::<Elf64_Ehdr>()]),
             (ELFCLASS64, ELFDATA2MSB) => ElfT::Elf64BE(&data[0..mem::size_of::<Elf64_Ehdr>()]),
             (ELFCLASS32, x) | (ELFCLASS64, x) => {
-                return Err(ElfError::InvalidHeaderField {
+                return Err(Error::InvalidHeaderField {
                     header: "ELF",
                     field: "e_ident[EI_DATA]",
                     value: x.into(),
                 });
             },
             (x, ELFDATA2LSB) | (x, ELFDATA2MSB) => {
-                return Err(ElfError::InvalidHeaderField {
+                return Err(Error::InvalidHeaderField {
                     header: "ELF",
                     field: "e_ident[EI_CLASS]",
                     value: x.into(),
@@ -160,7 +160,7 @@ impl<'a> Reader<'a> {
         let ehdr = ElfHeaderRef::try_from(ehdr_data)?;
 
         if ehdr.e_version() != EV_CURRENT {
-            return Err(ElfError::InvalidHeaderField {
+            return Err(Error::InvalidHeaderField {
                 header: "ELF",
                 field: "e_version",
                 value: ehdr.e_version().into(),
@@ -186,7 +186,7 @@ impl<'a> Reader<'a> {
         };
 
         if len < reader.ehdr.e_entry() {
-            return Err(ElfError::NotContainedInFile {
+            return Err(Error::NotContainedInFile {
                 what: "ELF header field e_entry",
                 which: reader.ehdr.e_entry(),
             });
@@ -198,12 +198,12 @@ impl<'a> Reader<'a> {
             let size = u64::from(reader.ehdr.e_phentsize());
             let num = u64::from(reader.ehdr.e_phnum());
             if !array_in_bounds(phoff, size, num) {
-                return Err(ElfError::NotContainedInFile { what: "program headers", which: phoff });
+                return Err(Error::NotContainedInFile { what: "program headers", which: phoff });
             }
             if (is_64bit && size as usize != mem::size_of::<Elf64_Phdr>()) ||
                (!is_64bit && size as usize != mem::size_of::<Elf32_Phdr>())
             {
-                return Err(ElfError::InvalidHeaderField {
+                return Err(Error::InvalidHeaderField {
                     header: "ELF",
                     field: "e_phentsize",
                     value: size,
@@ -212,7 +212,7 @@ impl<'a> Reader<'a> {
             // Check that the segments are contained in the file
             for (index, phdr) in reader.program_headers().into_iter().enumerate() {
                 if !array_in_bounds(phdr.p_offset(), phdr.p_filesz(), 1) {
-                    return Err(ElfError::NotContainedInFile { what: "segment", which: index as u64});
+                    return Err(Error::NotContainedInFile { what: "segment", which: index as u64});
                 }
             }
 
@@ -224,14 +224,14 @@ impl<'a> Reader<'a> {
             let shstrndx = reader.ehdr.e_shstrndx();
 
             if shnum >= SHN_LORESERVE {
-                return Err(ElfError::InvalidHeaderField {
+                return Err(Error::InvalidHeaderField {
                     header:"ELF",
                     field: "e_shnum",
                     value: shnum.into(),
                 });
             }
             if shstrndx >= SHN_LORESERVE && shstrndx != SHN_XINDEX {
-                return Err(ElfError::InvalidHeaderField {
+                return Err(Error::InvalidHeaderField {
                     header:"ELF",
                     field: "e_shstrndx",
                     value: shstrndx.into(),
@@ -242,17 +242,17 @@ impl<'a> Reader<'a> {
             // section header in the table whose st_size (resp. st_link) member holds the real
             // number of sections (resp. index of the section string table).
             if (shnum == 0 || shstrndx == SHN_XINDEX) && !array_in_bounds(shoff, size, 1) {
-                return Err(ElfError::NotContainedInFile { what: "section headers", which: shoff });
+                return Err(Error::NotContainedInFile { what: "section headers", which: shoff });
             }
             let num = reader.num_sections();
             if !array_in_bounds(shoff, size, num.into()) {
-                return Err(ElfError::NotContainedInFile { what: "section headers", which: shoff+size*u64::from(num) });
+                return Err(Error::NotContainedInFile { what: "section headers", which: shoff+size*u64::from(num) });
             }
 
             if (is_64bit && size as usize != mem::size_of::<Elf64_Shdr>()) ||
                (!is_64bit && size as usize != mem::size_of::<Elf32_Shdr>())
             {
-                return Err(ElfError::InvalidHeaderField {
+                return Err(Error::InvalidHeaderField {
                     header: "ELF",
                     field: "e_shentsize",
                     value: size,
@@ -266,17 +266,17 @@ impl<'a> Reader<'a> {
                 if section_type != SHT_NOBITS && section_type != SHT_NULL &&
                    !array_in_bounds(shdr.sh_offset(), shdr.sh_size(), 1)
                 {
-                    return Err(ElfError::NotContainedInFile { what: "section", which: index as u64 });
+                    return Err(Error::NotContainedInFile { what: "section", which: index as u64 });
                 }
                 if shdr.sh_link() >= num {
-                    return Err(ElfError::InvalidHeaderField {
+                    return Err(Error::InvalidHeaderField {
                         header: "section",
                         field: "sh_link",
                         value: shdr.sh_link().into(),
                     });
                 }
                 if shdr.sh_flags() & SHF_INFO_LINK != 0 && shdr.sh_info() >= num {
-                    return Err(ElfError::InvalidHeaderField {
+                    return Err(Error::InvalidHeaderField {
                         header: "section",
                         field: "sh_info",
                         value: shdr.sh_info().into(),
@@ -287,13 +287,13 @@ impl<'a> Reader<'a> {
                 match section_type {
                     SHT_SYMTAB => {
                         if reader.symtab_index != Elf_Word::from(SHN_UNDEF) {
-                            return Err(ElfError::MultipleSections { section: "SYMTAB" });
+                            return Err(Error::MultipleSections { section: "SYMTAB" });
                         }
                         reader.symtab_index = index;
                     },
                     SHT_DYNSYM => {
                         if reader.dynsym_index != Elf_Word::from(SHN_UNDEF) {
-                            return Err(ElfError::MultipleSections { section: "DYNSYM" });
+                            return Err(Error::MultipleSections { section: "DYNSYM" });
                         }
                         reader.dynsym_index = index;
                     },
@@ -304,18 +304,22 @@ impl<'a> Reader<'a> {
         Ok(reader)
     }
 
+    /// Returns `true` if the object file is little endian.
     pub fn little_endian(&self) -> bool {
         self.data[EI_DATA] == ELFDATA2LSB
     }
 
+    /// Returns `true` if the object file is 64-bit.
     pub fn is_64bit(&self) -> bool {
         self.data[EI_CLASS] == ELFCLASS64
     }
 
-    pub fn header(&self) -> ElfHeaderRef<'a> {
+    /// Returns a reference to the ELF header.
+    pub fn elf_header(&self) -> ElfHeaderRef<'a> {
         self.ehdr
     }
 
+    /// Returns a reference to the program headers.
     pub fn program_headers(&self) -> ProgramHeadersRef<'a> {
         let phoff = self.ehdr.e_phoff() as usize;
         let phentsize = self.ehdr.e_phentsize() as usize;
@@ -325,6 +329,8 @@ impl<'a> Reader<'a> {
         ProgramHeadersRef::try_from(self.ehdr.construct_from(phdr_data)).unwrap()
     }
 
+    /// Returns a slice containing the bytes that comprise the portion of the segment corresponding
+    /// to the program header that are in the object file, if any.
     pub fn segment_data(&self, phdr: ProgramHeaderRef<'a>) -> Option<&'a [u8]> {
         if phdr.p_type() == PT_NULL {
             return None;
@@ -343,6 +349,13 @@ impl<'a> Reader<'a> {
         SectionHeaderRef::try_from(self.ehdr.construct_from(shdr_data)).unwrap()
     }
 
+    /// Returns the number of sections in the object file.
+    ///
+    /// The ELF header (as returned by [elf_header](#method.elf_header))'s
+    /// [e_shnum](type.ElfHeaderRef.html#method.e_shnum) method does not return the correct number of
+    /// headers when the number of headers is at least
+    /// [SHN_LORESERVE](constant.SHN_LORESERVE.html). Use this function to get the correct number
+    /// of sections.
     pub fn num_sections(&self) -> Elf_Word {
         // If e_shoff > 0 and e_shnum() == 0, then section 0's st_size member holds the actual
         // number of sections.
@@ -370,12 +383,12 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn section_string_table(&self) -> ElfResult<Option<StringTableRef<'a>>> {
+    fn section_string_table(&self) -> Result<Option<StringTableRef<'a>>> {
         self.section_string_table_index()
             .map_or(Ok(None), |shstrndx| {
                 let shstr_shdr = self.section_headers().get(shstrndx as usize)?;
                 if shstr_shdr.sh_type() != SHT_STRTAB {
-                    return Err(ElfError::InvalidSectionType { expected: SHT_STRTAB, actual: shstr_shdr.sh_type() });
+                    return Err(Error::InvalidSectionType { expected: SHT_STRTAB, actual: shstr_shdr.sh_type() });
                 }
                 match self.section_data(shstr_shdr)? {
                     SectionDataRef::StringTable(strtab) => Ok(Some(strtab)),
@@ -425,29 +438,29 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn linked_string_table(&self, index: Elf_Word) -> ElfResult<StringTableRef<'a>> {
+    fn linked_string_table(&self, index: Elf_Word) -> Result<StringTableRef<'a>> {
         let data = self.section_headers().get(index as usize)
             .and_then(|shdr| self.section_data(shdr))
-            .map_err(|_| ElfError::InvalidLinkedSection { linked: index })?;
+            .map_err(|_| Error::InvalidLinkedSection { linked: index })?;
         if let SectionDataRef::StringTable(strtab) = data {
             Ok(strtab)
         } else {
-            Err(ElfError::InvalidLinkedSection { linked: index })
+            Err(Error::InvalidLinkedSection { linked: index })
         }
     }
 
-    fn linked_symbol_table(&self, index: Elf_Word) -> ElfResult<SymbolTableRef<'a>> {
+    fn linked_symbol_table(&self, index: Elf_Word) -> Result<SymbolTableRef<'a>> {
         let data = self.section_headers().get(index as usize)
             .and_then(|shdr| self.section_data(shdr))
-            .map_err(|_| ElfError::InvalidLinkedSection { linked: index })?;
+            .map_err(|_| Error::InvalidLinkedSection { linked: index })?;
         if let SectionDataRef::SymbolTable(symtab) = data {
             Ok(symtab)
         } else {
-            Err(ElfError::InvalidLinkedSection { linked: index })
+            Err(Error::InvalidLinkedSection { linked: index })
         }
     }
 
-    fn section_data(&self, shdr: SectionHeaderRef<'a>) -> ElfResult<SectionDataRef<'a>> {
+    fn section_data(&self, shdr: SectionHeaderRef<'a>) -> Result<SectionDataRef<'a>> {
         let data = if let SectionDataRef::Uninterpreted(data) = self.uninterpreted_section_data(shdr) {
             data
         } else {
@@ -484,7 +497,7 @@ impl<'a> Reader<'a> {
     }
 
     /// Returns a reference to the section corresponding to the section header.
-    pub fn get_section(&self, shdr: SectionHeaderRef<'a>) -> ElfResult<SectionRef<'a>> {
+    pub fn get_section(&self, shdr: SectionHeaderRef<'a>) -> Result<SectionRef<'a>> {
         let name = self.section_string_table()?
             .and_then(|strtab| strtab.get_string(shdr.sh_name()));
         let data = self.section_data(shdr)?;
@@ -503,7 +516,7 @@ impl<'a> Reader<'a> {
         }
     }
 
-    pub fn symtab(&self) -> ElfResult<Option<SectionRef<'a>>> {
+    pub fn symtab(&self) -> Result<Option<SectionRef<'a>>> {
         if self.symtab_index == Elf_Word::from(SHN_UNDEF) {
             return Ok(None);
         }
@@ -511,7 +524,7 @@ impl<'a> Reader<'a> {
         Ok(Some(self.get_section(shdr)?))
     }
 
-    pub fn dynsym(&self) -> ElfResult<Option<SectionRef<'a>>> {
+    pub fn dynsym(&self) -> Result<Option<SectionRef<'a>>> {
         if self.dynsym_index == Elf_Word::from(SHN_UNDEF) {
             return Ok(None);
         }
@@ -607,7 +620,7 @@ impl<'a> SymbolTableRef<'a> {
         self.entries.is_empty()
     }
 
-    pub fn get<'b>(&'b self, index: usize) -> ElfResult<SymbolRef<'a>> where
+    pub fn get<'b>(&'b self, index: usize) -> Result<SymbolRef<'a>> where
         'a: 'b
     {
         let entry = self.entries.get(index)?;
@@ -619,7 +632,7 @@ impl<'a> SymbolTableRef<'a> {
             if let Some(shndx) = self.shndx {
                 section = SectionIndex::Normal(shndx.get(index)?.value());
             } else {
-                return Err(ElfError::Msg { msg: "No associated SYMTAB_SHNDX section for symbol" });
+                return Err(Error::Msg { msg: "No associated SYMTAB_SHNDX section for symbol" });
             }
         } else {
             section = SectionIndex::Reserved(shndx);

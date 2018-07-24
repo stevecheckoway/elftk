@@ -1,7 +1,9 @@
+use std::result;
+
 use types::Elf_Word;
 
 #[derive(Debug, Clone, Copy, Fail)]
-pub enum ElfError {
+pub enum Error {
     #[fail(display = "not an ELF file")]
     NotElfFile,
 
@@ -36,4 +38,4 @@ pub enum ElfError {
     Msg { msg: &'static str },
 }
 
-pub type ElfResult<T> = Result<T, ElfError>;
+pub type Result<T> = result::Result<T, Error>;
