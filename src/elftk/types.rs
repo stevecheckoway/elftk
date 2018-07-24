@@ -26,8 +26,6 @@ pub type Elf64_Addr = u64;
 
 pub const EI_NIDENT: usize = 16; // Size of e_ident[]
 
-pub unsafe trait ElfStruct {}
-
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Elf32_Ehdr {
@@ -46,7 +44,6 @@ pub struct Elf32_Ehdr {
     pub e_shnum:        Elf32_Half,
     pub e_shstrndx:     Elf32_Half,
 }
-unsafe impl ElfStruct for Elf32_Ehdr {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -66,8 +63,6 @@ pub struct Elf64_Ehdr {
     pub e_shnum:        Elf64_Half,
     pub e_shstrndx:     Elf64_Half,
 }
-unsafe impl ElfStruct for Elf64_Ehdr {}
-
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -83,7 +78,6 @@ pub struct Elf32_Shdr {
     pub sh_addralign:   Elf32_Word,
     pub sh_entsize:     Elf32_Word,
 }
-unsafe impl ElfStruct for Elf32_Shdr {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -99,7 +93,6 @@ pub struct Elf64_Shdr {
     pub sh_addralign:   Elf64_Xword,
     pub sh_entsize:     Elf64_Xword,
 }
-unsafe impl ElfStruct for Elf64_Shdr {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -108,7 +101,6 @@ pub struct Elf32_Chdr {
     pub ch_size:      Elf32_Word,
     pub ch_addralign: Elf32_Word,
 }
-unsafe impl ElfStruct for Elf32_Chdr {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -118,7 +110,6 @@ pub struct Elf64_Chdr {
     pub ch_size:      Elf64_Xword,
     pub ch_addralign: Elf64_Xword,
 }
-unsafe impl ElfStruct for Elf64_Chdr {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -130,7 +121,6 @@ pub struct Elf32_Sym {
     pub st_other: u8,
     pub st_shndx: Elf32_Half,
 }
-unsafe impl ElfStruct for Elf32_Sym {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -142,7 +132,6 @@ pub struct Elf64_Sym {
     pub st_value: Elf64_Addr,
     pub st_size:  Elf64_Xword,
 }
-unsafe impl ElfStruct for Elf64_Sym {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -150,7 +139,6 @@ pub struct Elf32_Rel {
     pub r_offset: Elf32_Addr,
     pub r_info:   Elf32_Word,
 }
-unsafe impl ElfStruct for Elf32_Rel {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -158,7 +146,6 @@ pub struct Elf64_Rel {
     pub r_offset: Elf64_Addr,
     pub r_info:   Elf64_Xword,
 }
-unsafe impl ElfStruct for Elf64_Rel {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -167,7 +154,6 @@ pub struct Elf32_Rela {
     pub r_info:   Elf32_Word,
     pub r_addend: Elf32_Sword,
 }
-unsafe impl ElfStruct for Elf32_Rela {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -176,7 +162,6 @@ pub struct Elf64_Rela {
     pub r_info:     Elf64_Xword,
     pub r_addend:   Elf64_Sxword,
 }
-unsafe impl ElfStruct for Elf64_Rela {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -190,7 +175,6 @@ pub struct Elf32_Phdr {
     pub p_flags:  Elf32_Word,
     pub p_align:  Elf32_Word,
 }
-unsafe impl ElfStruct for Elf32_Phdr {}
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -204,4 +188,24 @@ pub struct Elf64_Phdr {
     pub p_memsz:  Elf64_Xword,
     pub p_align:  Elf64_Xword,
 }
-unsafe impl ElfStruct for Elf64_Phdr {}
+
+pub unsafe trait ElfType {}
+unsafe impl ElfType for Elf_Half {}
+unsafe impl ElfType for Elf_Word {}
+unsafe impl ElfType for Elf_Sword {}
+unsafe impl ElfType for Elf_Xword {}
+unsafe impl ElfType for Elf_Sxword {}
+unsafe impl ElfType for Elf32_Ehdr {}
+unsafe impl ElfType for Elf64_Ehdr {}
+unsafe impl ElfType for Elf32_Shdr {}
+unsafe impl ElfType for Elf64_Shdr {}
+unsafe impl ElfType for Elf32_Chdr {}
+unsafe impl ElfType for Elf64_Chdr {}
+unsafe impl ElfType for Elf32_Sym {}
+unsafe impl ElfType for Elf64_Sym {}
+unsafe impl ElfType for Elf32_Rel {}
+unsafe impl ElfType for Elf64_Rel {}
+unsafe impl ElfType for Elf32_Rela {}
+unsafe impl ElfType for Elf64_Rela {}
+unsafe impl ElfType for Elf32_Phdr {}
+unsafe impl ElfType for Elf64_Phdr {}

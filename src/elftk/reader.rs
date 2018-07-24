@@ -2,11 +2,12 @@
 #![allow(dead_code)]
 
 use std::mem;
+use std::iter;
 
-use super::constants::*;
-use super::error::*;
-use super::format::*;
-use super::types::*;
+use constants::*;
+use error::*;
+use format::*;
+use types::*;
 
 macro_rules! noswap_field_impl {
     ( $field:ident, $type:ty ) => {
@@ -80,6 +81,68 @@ impl<'a> SectionHeaderRef<'a> {
     field_impl!(sh_info,      Elf32_Word, Elf64_Word);
     field_impl!(sh_addralign, Elf32_Word, Elf64_Xword);
     field_impl!(sh_entsize,   Elf32_Word, Elf64_Xword);
+}
+
+//pub type Sections<'a, F> = iter::FilterMap<ElfIter<'a, Elf32_Shdr, Elf64_Shdr>, F>;
+
+pub struct Sections<'a, 'b> where
+    'a: 'b
+{
+    reader: &'b Reader<'a>,
+    header_iter: <ElfSliceRef<'a, Elf32_Shdr, Elf64_Shdr> as iter::IntoIterator>::IntoIter,
+}
+
+impl<'a, 'b> Iterator for Sections<'a, 'b> {
+    type Item = SectionRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.header_iter.next()
+            .and_then(|shdr| self.reader.get_section(shdr).ok())
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) { self.header_iter.size_hint() }
+    fn count(self) -> usize { self.header_iter.count() }
+    fn last(self) -> Option<Self::Item> {
+        if let Some(shdr) = self.header_iter.last() {
+            self.reader.get_section(shdr).ok()
+        } else {
+            None
+        }
+    }
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.header_iter.nth(n)
+            .and_then(|shdr| self.reader.get_section(shdr).ok())
+    }
+}
+
+pub struct SectionsMatching<'a, 'b, Predicate> where
+    'a: 'b,
+    Predicate: Fn(SectionHeaderRef<'b>) -> bool,
+{
+    reader: &'b Reader<'a>,
+    header_iter: <ElfSliceRef<'a, Elf32_Shdr, Elf64_Shdr> as iter::IntoIterator>::IntoIter,
+    pred: Predicate,
+}
+
+impl<'a, 'b, Predicate> Iterator for SectionsMatching<'a, 'b, Predicate> where
+    Predicate: Fn(SectionHeaderRef<'b>) -> bool,
+{
+    type Item = SectionRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(shdr) = self.header_iter.next() {
+            if (self.pred)(shdr) {
+                return self.reader.get_section(shdr).ok();
+            }
+        }
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (_, upper) = self.header_iter.size_hint();
+        // There might be no more due to the predicate.
+        (0, upper)
+    }
 }
 
 pub struct Reader<'a> {
@@ -365,6 +428,44 @@ impl<'a> Reader<'a> {
         SectionHeadersRef::try_from(self.ehdr.construct_from(shdr_data)).unwrap()
     }
 
+    // pub fn sections_matching<'b, Predicate>(&'b self, p: Predicate) -> Sections<'b, impl Fn(SectionHeaderRef<'b>) -> Option<SectionRef<'b>>>
+    // where
+    //     Predicate: Fn(SectionHeaderRef<'b>) -> bool
+    // {
+    //     let f = move |shdr| {
+    //         if p(shdr) {
+    //             self.get_section(shdr).ok()
+    //         } else {
+    //             None
+    //         }
+    //     };
+    //     let iter = self.section_headers().into_iter();
+    //     iter.filter_map(f)
+    // }
+
+    // pub fn sections<'b>(&'b self) -> impl Iterator<Item=SectionRef<'a>> + 'b { //Sections<'b, impl Fn(SectionHeaderRef<'b>) -> Option<SectionRef<'b>> + 'b> {
+    //     let reader = &self;
+    //     let f = move |shdr| reader.get_section(shdr).ok();
+    //     let iter = self.section_headers().into_iter();
+    //     iter.filter_map(f)
+    // }
+    pub fn sections<'b>(&'b self) -> Sections<'a, 'b> {
+        Sections {
+            reader: self,
+            header_iter: self.section_headers().into_iter(),
+        }
+    }
+
+    pub fn sections_matching<'b, Predicate>(&'b self, pred: Predicate) -> SectionsMatching<'a, 'b, Predicate> where
+        Predicate: Fn(SectionHeaderRef<'b>) -> bool,
+    {
+        SectionsMatching {
+            reader: self,
+            header_iter: self.section_headers().into_iter(),
+            pred,
+        }
+    }
+
     pub fn section_name<'b>(&'b self, shdr: SectionHeaderRef<'a>) -> &'a [u8] where
         'a: 'b,
     {
@@ -429,13 +530,17 @@ impl<'a> Reader<'a> {
                 })
             },
             SHT_REL => SectionDataRef::RelocationTable(RelTableRef {
-                    symbol_table: self.linked_symbol_table(shdr.sh_link())?,
-                    entries: RelTableEntriesRef::try_from(shdr.construct_from(data))?,
-                }),
+                symbol_table: self.linked_symbol_table(shdr.sh_link())?,
+                entries: RelTableEntriesRef::try_from(shdr.construct_from(data))?,
+            }),
             SHT_RELA => SectionDataRef::ExplicitRelocationTable(RelaTableRef {
-                    symbol_table: self.linked_symbol_table(shdr.sh_link())?,
-                    entries: RelaTableEntriesRef::try_from(shdr.construct_from(data))?,
-                }),
+                symbol_table: self.linked_symbol_table(shdr.sh_link())?,
+                entries: RelaTableEntriesRef::try_from(shdr.construct_from(data))?,
+            }),
+            SHT_NOTE => SectionDataRef::NoteTable(NoteTableRef {
+                words: ElfSliceRef::try_from(shdr.construct_from(data))?,
+                data
+            }),
             // TODO: Fill in the rest.
             _ => SectionDataRef::Uninterpreted(data),
         })
@@ -627,6 +732,90 @@ pub struct RelaTableRef<'a> {
     pub entries: RelaTableEntriesRef<'a>,
 }
 
+pub struct NoteRef<'a> {
+    pub name: Option<&'a [u8]>,
+    pub desc: Option<&'a [u8]>,
+    pub note_type: Elf_Xword,
+}
+
+pub type MachineWordRef<'a> = ElfRef<'a, Elf32_Word, Elf64_Xword>;
+pub type MachineWordsRef<'a> = ElfSliceRef<'a, Elf32_Word, Elf64_Xword>;
+
+pub struct NoteIter<'a> {
+    word_iter: ElfIter<'a, Elf32_Word, Elf64_Xword>,
+    data: &'a [u8],
+}
+
+impl<'a> Iterator for NoteIter<'a> {
+    type Item = NoteRef<'a>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let namesz = if let Some(namesz) = self.word_iter.next().map(|w| w.get()) {
+            namesz as usize
+        } else {
+            return None;
+        };
+        let descsz = if let Some(descsz) = self.word_iter.next().map(|w| w.get()) {
+            descsz as usize
+        } else {
+            return None;
+        };
+        let note_type = if let Some(nt) = self.word_iter.next().map(|w| w.get()) {
+            nt
+        } else {
+            return None;
+        };
+        let (size, mask) = if self.word_iter.is_64bit() { (8, 7) } else { (4, 3) };
+        let mut offset = 3*size;
+        let total_size = offset + ((namesz + mask) & !mask) + ((descsz + mask) & !mask);
+        if self.data.len() < total_size {
+            return None;
+        }
+        // If namesz or descsz is 0, then the corresponding note doesn't have the field.
+        // Otherwise, they're the length of a null-terminated string of bytes.
+        let name;
+        if namesz == 0 {
+            name = None;
+        } else {
+            name = Some(&self.data[offset .. offset+namesz-1]);
+            offset += (namesz + mask) & !mask;
+        }
+        let desc;
+        if descsz == 0 {
+            desc = None;
+        } else {
+            desc = Some(&self.data[offset .. offset+descsz-1]);
+            offset += (descsz + mask) & !mask;
+        }
+        self.data = &self.data[offset ..];
+        Some(NoteRef { name, desc, note_type })
+    }
+}
+
+pub struct NoteTableRef<'a> {
+    words: ElfSliceRef<'a, Elf32_Word, Elf64_Xword>,
+    data: &'a [u8],
+}
+
+impl<'a> NoteTableRef<'a> {
+    pub fn iter(&self) -> NoteIter<'a> {
+        NoteIter {
+            data: self.data,
+            word_iter: self.words.iter(),
+        }
+    }
+}
+
+impl<'a> iter::IntoIterator for NoteTableRef<'a> {
+    type Item = NoteRef<'a>;
+    type IntoIter = NoteIter<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        NoteIter {
+            data: self.data,
+            word_iter: self.words.into_iter(),
+        }
+    }
+}
+
 pub enum SectionDataRef<'a> {
     /// Section holds a string table.
     StringTable(StringTableRef<'a>),
@@ -643,6 +832,9 @@ pub enum SectionDataRef<'a> {
     /// Section holds a slice of Elf_Words.
     ElfWords(ElfWordsRef<'a>),
 
+    /// Section holds a notes table.
+    NoteTable(NoteTableRef<'a>),
+
     /// Section holds some uninterpreted data.
     Uninterpreted(&'a [u8]),
 
@@ -657,9 +849,6 @@ pub struct SectionRef<'a> {
 }
 
 /*
-section_type!(RelaSectionRef, SHT_RELA);
-section_type!(RelSectionRef, SHT_REL);
-section_type!(NoteSectionRef, SHT_NOTE);
 section_type!(SymbolHashTableSectionRef, SHT_HASH);
 section_type!(PointerArraySectionRef, SHT_INIT_ARRAY | SHT_FINI_ARRAY | SHT_PREINIT_ARRAY);
 section_type!(SymbolTableSectionIndexSectionRef, SHT_SYMTAB_SHNDX);

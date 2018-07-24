@@ -1,4 +1,4 @@
-use super::Elf_Word;
+use types::Elf_Word;
 
 #[derive(Debug, Clone, Copy, Fail)]
 pub enum ElfError {

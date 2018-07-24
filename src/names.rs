@@ -34,42 +34,6 @@ pub fn section_flags(flags: elf::Elf_Xword) -> ([u8; 15], usize) {
     (s, idx)
 }
 
-pub fn symbol_type(typ: u8) -> &'static str {
-    match typ {
-        elf::STT_NOTYPE                     => "NOTYPE",
-        elf::STT_OBJECT                     => "OBJECT",
-        elf::STT_FUNC                       => "FUNC",
-        elf::STT_SECTION                    => "SECTION",
-        elf::STT_FILE                       => "FILE",
-        elf::STT_COMMON                     => "COMMON",
-        elf::STT_TLS                        => "TLS",
-        elf::STT_LOOS ... elf::STT_HIOS     => "OS",
-        elf::STT_LOPROC ... elf::STT_HIPROC => "PROC",
-        _                                   => "UNKNOWN",
-    }
-}
-
-pub fn symbol_binding(binding: u8) -> &'static str {
-    match binding {
-        elf::STB_LOCAL                      => "LOCAL",
-        elf::STB_GLOBAL                     => "GLOBAL",
-        elf::STB_WEAK                       => "WEAK",
-        elf::STB_LOOS ... elf::STB_HIOS     => "OS",
-        elf::STB_LOPROC ... elf::STB_HIPROC => "PROC",
-        _                                   => "UNKNOWN",
-    }
-}
-
-pub fn symbol_visibility(vis: u8) -> &'static str {
-    match vis {
-        elf::STV_DEFAULT   => "DEFAULT",
-        elf::STV_INTERNAL  => "INTERNAL",
-        elf::STV_HIDDEN    => "HIDDEN",
-        elf::STV_PROTECTED => "PROTECTED",
-        _                  => unreachable!(),
-    }
-}
-
 pub fn symbol_index(index: elf::SectionIndex) -> String {
     match index {
         elf::SectionIndex::Normal(ndx)               => format!("{}", ndx),

@@ -1,7 +1,33 @@
 use std::{iter, mem, slice};
 
-use super::ElfStruct;
-use super::error::*;
+use types::ElfType;
+use error::{ElfResult, ElfError};
+
+pub trait FromEndian {
+    fn from_be(x: Self) -> Self;
+    fn from_le(x: Self) -> Self;
+}
+
+macro_rules! impl_from_endian {
+    ($t:ident) => {
+        impl FromEndian for $t {
+            fn from_be(x: $t) -> $t {
+                $t::from_be(x)
+            }
+
+            fn from_le(x: $t) -> $t {
+                $t::from_le(x)
+            }
+        }
+    }
+}
+
+impl_from_endian!(u16);
+impl_from_endian!(i16);
+impl_from_endian!(u32);
+impl_from_endian!(i32);
+impl_from_endian!(u64);
+impl_from_endian!(i64);
 
 #[derive(Debug, Clone, Copy)]
 pub enum ElfT<T32, T64> {
@@ -12,6 +38,12 @@ pub enum ElfT<T32, T64> {
 }
 
 impl<T32, T64> ElfT<T32, T64> {
+    /// Returns `true` for 64-bit types.
+    #[inline]
+    pub fn is_64bit(&self) -> bool {
+        self.apply(|_| false, |_| true)
+    }
+
     /// Construct a new `ElfT` with the same format (32- or 64-bit, little- or bit-endian) with
     /// `data`.
     #[inline]
@@ -58,25 +90,11 @@ impl<T32, T64> ElfT<T32, T64> {
     }
 }
 
-pub type ElfFormat = ElfT<(), ()>;
-
-#[cfg(all(target_pointer_width = "32", target_endian = "little"))]
-pub const NATIVE_FILE_FORMAT: ElfFormat = ElfT::Elf32LE(());
-
-#[cfg(all(target_pointer_width = "32", target_endian = "big"))]
-pub const NATIVE_FILE_FORMAT: ElfFormat = ElfT::Elf32BE(());
-
-#[cfg(all(target_pointer_width = "64", target_endian = "little"))]
-pub const NATIVE_FILE_FORMAT: ElfFormat = ElfT::Elf64LE(());
-
-#[cfg(all(target_pointer_width = "64", target_endian = "big"))]
-pub const NATIVE_FILE_FORMAT: ElfFormat = ElfT::Elf64LE(());
-
 pub type ElfRef<'a, T32, T64> = ElfT<&'a T32, &'a T64>;
 
 impl<'a, T32, T64> ElfRef<'a, T32, T64> where
-    T32: ElfStruct,
-    T64: ElfStruct,
+    T32: ElfType,
+    T64: ElfType,
 {
     pub(super) fn try_from(raw: ElfSliceRef<'a, u8, u8>) -> ElfResult<Self> {
         let (e_size, e_align, length, addr) =
@@ -93,6 +111,20 @@ impl<'a, T32, T64> ElfRef<'a, T32, T64> where
     }
 }
 
+impl<'a, T32, T64> ElfRef<'a, T32, T64> where
+    T32: FromEndian + Copy + Into<T64>,
+    T64: FromEndian + Copy,
+{
+    pub fn get(&self) -> T64 {
+        match *self {
+            ElfT::Elf32LE(x) => T32::from_le(*x).into(),
+            ElfT::Elf32BE(x) => T32::from_be(*x).into(),
+            ElfT::Elf64LE(x) => T64::from_le(*x),
+            ElfT::Elf64BE(x) => T64::from_be(*x),
+        }
+    }
+}
+
 pub type ElfSliceRef<'a, T32, T64> = ElfT<&'a [T32], &'a [T64]>;
 
 impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> {
@@ -103,9 +135,7 @@ impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> {
     pub fn is_empty(&self) -> bool {
         self.apply(|s| s.is_empty(), |s| s.is_empty())
     }
-}
 
-impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> {
     pub fn get(&self, index: usize) -> ElfResult<ElfRef<'a, T32, T64>> {
         if index >= self.len() {
             return Err(ElfError::IndexOutOfBounds { index, length: self.len() });
@@ -119,8 +149,8 @@ impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> {
 }
 
 impl<'a, T32, T64> ElfSliceRef<'a, T32, T64> where
-    T32: ElfStruct,
-    T64: ElfStruct,
+    T32: ElfType,
+    T64: ElfType,
 {
     /// Try to convert from a reference to a `&[u8]` to a reference to a `&[T32]` or `&[T64]`.
     ///

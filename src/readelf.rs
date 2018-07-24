@@ -189,8 +189,8 @@ fn print_symbols(reader: &elf::Reader, dynamic: bool) -> Result<(), Error> {
         let name = symbol.symbol_name.map_or("", to_utf8);
         println!("{:6}: {:08x} {:5} {:<7} {:<6} {:<6} {:>3} {}",
                  i, symbol.value, symbol.size,
-                 symbol_type(symbol.symbol_type()), symbol_binding(symbol.binding()),
-                 symbol_visibility(symbol.visibility()), symbol_index(symbol.section), name);
+                 elf::symbol_type_name(symbol.symbol_type()), elf::symbol_binding_name(symbol.binding()),
+                 elf::symbol_visibility_name(symbol.visibility()), symbol_index(symbol.section), name);
     }
 
     Ok(())
@@ -244,6 +244,36 @@ fn print_relocations(reader: &elf::Reader) -> Result<(), Error> {
     Ok(())
 }
 
+fn hex_string(data: &[u8]) -> String {
+    let mut s = String::with_capacity(2*data.len());
+    for b in data {
+        s += &format!("{:02x}", b);
+    }
+    s
+}
+
+fn print_notes(reader: &elf::Reader) -> Result<(), Error> {
+    for shdr in reader.section_headers() {
+        if shdr.sh_type() != elf::SHT_NOTE {
+            continue;
+        }
+        let section = reader.get_section(shdr)?;
+        if let elf::SectionDataRef::NoteTable(notes) = section.data {
+            println!("\nDisplaying notes found in: {}", section.name.map_or("", to_utf8));
+            println!("  {:14} Type Desc", "Name");
+            for note in notes {
+                let name = note.name.map_or("<none>", to_utf8);
+                let desc = note.desc.map_or(String::from("<none>"),
+                                            |s| str::from_utf8(s).map(String::from)
+                                                .unwrap_or_else(|_| hex_string(s)));
+                // Not the greatest implementation.
+                println!("  {:14} {:4} {}", name, note.note_type, desc);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn main() -> Result<(), Error> {
     let matches = app_from_crate!()
         .setting(AppSettings::DeriveDisplayOrder)
@@ -281,6 +311,10 @@ fn main() -> Result<(), Error> {
         .arg(Arg::with_name("dyn-syms")
              .help("Display the dynamic symbol table")
              .long("dyn-syms"))
+        .arg(Arg::with_name("notes")
+             .help("Display the core notes (if present)")
+             .short("n")
+             .long("notes"))
         .arg(Arg::with_name("relocs")
              .help("Display the relocations (if present)")
              .short("r")
@@ -300,6 +334,7 @@ fn main() -> Result<(), Error> {
     let section_headers = headers || matches.is_present("section-headers") || matches.is_present("sections");
     let symbols = all || matches.is_present("syms") || matches.is_present("symbols");
     let dynsyms = matches.is_present("dyn-sym");
+    let notes = matches.is_present("notes");
     let relocations = all || matches.is_present("relocs");
     let input = matches.values_of("elf-file").unwrap();
 
@@ -324,6 +359,9 @@ fn main() -> Result<(), Error> {
         }
         if symbols {
             print_symbols(&reader, false)?;
+        }
+        if notes {
+            print_notes(&reader)?;
         }
         // TODO: histogram
     }

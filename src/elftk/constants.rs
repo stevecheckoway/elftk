@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
-use super::{Elf_Half, Elf_Word, Elf_Xword};
+use types::{Elf_Half, Elf_Word, Elf_Xword};
 
 // Elf header constants.
 // e_ident
